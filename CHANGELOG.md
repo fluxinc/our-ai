@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.38.0 - 2026-08-13
+
+### Added
+
+- First-class, separate Grok and Cursor CLI harness support across `my ai`,
+  onboarding, session joins/resumes, self-skill management, launch-scoped
+  organization skills, detection, help, and documentation. Cursor execution
+  prefers the unambiguous `cursor-agent` compatibility command and validates
+  the current official `agent` fallback so Grok's same-named executable is
+  never launched by mistake.
+- `my admin skills add --require TYPE:ID` records `workspace:`, `tool:`, or
+  `service:` dependencies on import.
+
 ## 0.37.0 - 2026-07-31
 
 ### Added

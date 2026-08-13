@@ -7,8 +7,9 @@ generic — no organization is described here.
 ## 1. Problem
 
 A company adopts AI agents across several harnesses (Claude Code, Codex,
-OpenCode, Antigravity) on many machines. Each agent is only as useful as the
-skills and context it can reach. Without a mechanism, every machine drifts:
+OpenCode, Antigravity, Grok, Cursor) on many machines. Each agent is only as
+useful as the skills and context it can reach. Without a mechanism, every
+machine drifts:
 different skills, stale company knowledge, ad-hoc tool setup, no provenance.
 
 The goal: **one command on a fresh machine makes every installed agent operate

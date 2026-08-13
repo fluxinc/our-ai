@@ -54,7 +54,7 @@ func launchSelectorFromOpts(opts launchCommandOpts) (launchprofile.Selector, err
 func (a app) ensureLaunchOrgSkills(h harness.Harness, opts launchCommandOpts, doc registeredDoc, root, targetDir string, selector launchprofile.Selector) error {
 	if !h.SupportsLaunchRootSkills() {
 		if selector.Kind != "" {
-			return fmt.Errorf("harness %q does not support launch-scoped skill profiles yet; omit --skills/--profile or use claude-code, codex, or antigravity", h)
+			return fmt.Errorf("harness %q does not support launch-scoped skill profiles yet; omit --skills/--profile or use %s", h, harness.LaunchSkillNames())
 		}
 		return a.ensureCompatibilityGlobalOrgSkills(h, opts, doc)
 	}

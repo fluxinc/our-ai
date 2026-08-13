@@ -92,6 +92,74 @@ func TestSkillsSelfInstallAndStatus(t *testing.T) {
 	}
 }
 
+func TestSkillsSelfInstallGrok(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".grok"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "skills", "self", "install", "grok", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "grok\tmy-cli\tinstalled") {
+		t.Fatalf("install stdout = %q", stdout.String())
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".grok", "skills", "my-cli")); err != nil {
+		t.Fatalf("grok self skill was not installed: %v", err)
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"my", "skills", "self", "status", "grok", "--json", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`"harness": "grok"`,
+		`"skill": "my-cli"`,
+		`"status": "installed"`,
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("status stdout = %q, missing %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestSkillsSelfInstallCursor(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".cursor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "skills", "self", "install", "cursor", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "cursor\tmy-cli\tinstalled") {
+		t.Fatalf("install stdout = %q", stdout.String())
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".cursor", "skills", "my-cli")); err != nil {
+		t.Fatalf("Cursor self skill was not installed: %v", err)
+	}
+}
+
+func TestSkillsInstallHelpListsGrok(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{"my", "skills", "--help"})
+	if err != nil && !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("err = %v", err)
+	}
+	out := stdout.String() + stderr.String()
+	if !strings.Contains(out, "grok") {
+		t.Fatalf("skills help missing grok:\n%s", out)
+	}
+	if !strings.Contains(out, "cursor") {
+		t.Fatalf("skills help missing cursor:\n%s", out)
+	}
+}
+
 func TestSkillsListJSON(t *testing.T) {
 	source := makeCLISkill(t, "demo-skill")
 	var stdout, stderr bytes.Buffer

@@ -10,10 +10,10 @@ envelope for agents on a fresh machine.
 
 ## The problem
 
-AI harnesses drift. A team may use Claude Code, Codex, OpenCode, and Antigravity,
-but each surface has its own skill location, project context rules, and local
-setup habits. Without one source of truth, agents see different knowledge and
-different capabilities.
+AI harnesses drift. A team may use Claude Code, Codex, OpenCode, Antigravity,
+Grok, and Cursor, but each surface has its own skill location, project context
+rules, and local setup habits. Without one source of truth, agents see
+different knowledge and different capabilities.
 
 `my` makes the setup deterministic:
 

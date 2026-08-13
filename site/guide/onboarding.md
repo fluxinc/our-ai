@@ -22,8 +22,9 @@ my onboarding
 When a single logged-in harness is detected, `my` launches it. If none is
 logged in but exactly one supported harness is installed, `my` launches that
 harness. If the choice is ambiguous, `my` asks which harness to use. Pass
-`--harness codex`, `--harness claude-code`, `--harness opencode`, or
-`--harness antigravity` to skip detection.
+`--harness codex`, `--harness claude-code`, `--harness opencode`,
+`--harness antigravity`, `--harness grok`, or `--harness cursor` to skip
+detection.
 
 The launched model starts by greeting the operator and immediately sets up the
 split-pane workflow. It gives a small first command set, waits for the operator

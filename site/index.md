@@ -19,7 +19,7 @@ features:
     details: Skills, mounts, catalog, tools, and generated guidance flow from a single organization source of truth.
   - icon: "02"
     title: Every harness
-    details: Claude Code, Codex, OpenCode, and Antigravity launch from one manifest-defined profile, using the best available skill path for each harness.
+    details: Claude Code, Codex, OpenCode, Antigravity, Grok, and Cursor launch from one manifest-defined profile, using the best available skill path for each harness.
   - icon: "03"
     title: Local umbrella
     details: Every operator gets the same deterministic workspace, with synced content, catalog repositories, state, and scratch.

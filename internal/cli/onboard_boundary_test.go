@@ -333,6 +333,30 @@ func TestAutoDetectHarnessUsesSingleInstalled(t *testing.T) {
 	}
 }
 
+func TestAutoDetectHarnessSupportsGrokAndCursor(t *testing.T) {
+	for _, tc := range []struct {
+		harness harness.Harness
+		command string
+	}{
+		{harness: harness.Grok, command: "grok"},
+		{harness: harness.Cursor, command: "cursor-agent"},
+	} {
+		t.Run(string(tc.harness), func(t *testing.T) {
+			home := t.TempDir()
+			a := app{lookPath: func(name string) (string, error) {
+				if name == tc.command {
+					return "/test/bin/" + name, nil
+				}
+				return "", exec.ErrNotFound
+			}}
+			got, reason, ok := a.autoDetectHarness(home)
+			if !ok || got != tc.harness || reason != "installed" {
+				t.Fatalf("autoDetectHarness = %q, %q, %v; want %s installed", got, reason, ok, tc.harness)
+			}
+		})
+	}
+}
+
 func TestAutoDetectHarnessReturnsFalseWhenAmbiguous(t *testing.T) {
 	home := t.TempDir()
 	a := app{lookPath: func(name string) (string, error) {

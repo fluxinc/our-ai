@@ -62,6 +62,7 @@ type app struct {
 	// keeps tests on the deterministic, non-launching path by default.
 	interactive          bool
 	lookPath             func(string) (string, error)
+	harnessProbe         func(path string, args ...string) ([]byte, error)
 	execHarness          func(path string, args []string, dir string) error
 	updateSource         selfupdate.Source
 	updateNow            func() time.Time
@@ -111,7 +112,7 @@ func shouldAutoSyncSelfSkill(args []string) bool {
 }
 
 func isKnownHarnessEnv() bool {
-	for _, key := range []string{"CLAUDECODE", "CODEX_THREAD_ID", "OPENCODE"} {
+	for _, key := range []string{"CLAUDECODE", "CODEX_THREAD_ID", "OPENCODE", "GROK_SESSION_ID", "CURSOR_AGENT"} {
 		if os.Getenv(key) != "" {
 			return true
 		}

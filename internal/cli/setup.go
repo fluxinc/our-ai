@@ -397,7 +397,7 @@ func (a app) runOnboard(args []string) error {
 	fs.StringVar(&opts.umbrellaRoot, "umbrella", "", "override umbrella root")
 	fs.BoolVar(&opts.agent, "agent", false, "force launching model-driven onboarding in a harness")
 	fs.BoolVar(&opts.noAgent, "no-agent", false, "run the deterministic walkthrough instead of launching a harness")
-	fs.StringVar(&opts.harnessName, "harness", "", "harness to launch (claude-code, codex, opencode, antigravity)")
+	fs.StringVar(&opts.harnessName, "harness", "", "harness to launch ("+harness.Names()+")")
 	fs.BoolVar(&opts.noRefresh, "no-refresh", false, "skip best-effort auto-refresh during setup")
 	fs.BoolVar(&opts.noUpdateCheck, "no-update-check", false, "skip best-effort update notice during setup")
 	fs.Usage = func() {
@@ -565,14 +565,13 @@ func (a app) runOnboardAgentAuthor(opts onboardOptions, h harness.Harness) error
 	if err != nil {
 		return err
 	}
-	commandName := h.CommandName()
 	args, err := initialPromptArgs(h, onboardAgentPrompt("AUTHOR", "", ""))
 	if err != nil {
 		return err
 	}
-	binary, err := a.lookupPath(commandName)
+	binary, err := a.lookupHarnessBinary(h)
 	if err != nil {
-		a.printLaunchMissingHarness(commandName, cwd, args, false)
+		a.printLaunchMissingHarness(h, cwd, args, false, err)
 		return errAlreadyPrinted
 	}
 	return a.runHarness(binary, args, cwd)
@@ -667,7 +666,7 @@ func (a app) autoDetectHarness(home string) (harness.Harness, string, bool) {
 }
 
 func (a app) harnessInstalled(h harness.Harness) bool {
-	_, err := a.lookupPath(h.CommandName())
+	_, err := a.lookupHarnessBinary(h)
 	return err == nil
 }
 
@@ -991,6 +990,7 @@ func (a app) printGuidanceResult(result guidance.Result) {
 }
 
 func (a app) printLaunchHints(root string) {
-	fmt.Fprintf(a.stdout, "launch\tclaude-code\t%s\n", shellCommandLine(root, "claude", nil))
-	fmt.Fprintf(a.stdout, "launch\tcodex\t%s\n", shellCommandLine(root, "codex", nil))
+	for _, h := range harness.All() {
+		fmt.Fprintf(a.stdout, "launch\t%s\t%s\n", h, shellCommandLine(root, h.CommandName(), nil))
+	}
 }

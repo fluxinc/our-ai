@@ -32,7 +32,9 @@ own.
 
 `my ai` composes the organization skill loadout for a launch and materializes it
 into the launch root (`.agents/skills/`, plus a `.claude/skills/` mirror for
-Claude Code). Choose the loadout with mutually exclusive selectors:
+Claude Code and a `.grok/skills/` mirror for Grok). Cursor reads the central
+`.agents/skills/` tree directly. Choose the loadout with mutually exclusive
+selectors:
 
 ```sh
 my ai                                       # default loadout for this launch target
@@ -47,7 +49,8 @@ distinct from a role. With no selector, `my ai` uses the selected role's skills
 for a base umbrella launch, includes workspace-satisfied skills for session
 launches, uses all org skills for an unscoped umbrella, and intentionally uses no
 org skills for repo launches. These selectors compose for harnesses with a
-project-local skill seam (Claude Code, Codex, Antigravity). OpenCode is
+project-local skill seam (Claude Code, Codex, Antigravity, Grok, Cursor).
+OpenCode is
 compatibility-global: it keeps organization skills in
 `~/.config/opencode/skills` and rejects `--skills`/`--profile` until a
 launch-root seam is proven. The `my skills` commands below manage user-global
@@ -125,8 +128,11 @@ copy into the harness skill directory.
 | Codex | `~/.codex/skills/<skill>` |
 | OpenCode | `~/.config/opencode/skills/<skill>` |
 | Antigravity | `~/.agents/skills/<skill>` |
+| Grok | `~/.grok/skills/<skill>` |
+| Cursor | `~/.cursor/skills/<skill>` |
 
 Managed launches use those paths differently from manual skill commands: Claude
-Code receives a launch-root `.claude/skills` mirror, Codex and Antigravity read
-launch-root `.agents/skills`, and OpenCode stays global as a compatibility
-exception.
+Code receives a launch-root `.claude/skills` mirror, Grok receives a launch-root
+`.grok/skills` mirror, Codex and Antigravity read launch-root `.agents/skills`,
+Cursor also reads launch-root `.agents/skills`, and OpenCode stays global as a
+compatibility exception.

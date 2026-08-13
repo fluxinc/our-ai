@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fluxinc/my-cli/internal/bundle"
+	"github.com/fluxinc/my-cli/internal/harness"
 	"github.com/fluxinc/my-cli/internal/selfupdate"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 	"github.com/fluxinc/my-cli/internal/worksession"
@@ -563,6 +564,10 @@ func TestLaunchOnboardThenExecsWithArgs(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "launch\tcodex\tcd "+umbrellaRoot+" && codex") {
 		t.Fatalf("onboard stdout missing launch hint: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "launch\tgrok\tcd "+umbrellaRoot+" && grok") ||
+		!strings.Contains(stdout.String(), "launch\tcursor\tcd "+umbrellaRoot+" && cursor-agent") {
+		t.Fatalf("onboard stdout missing Grok/Cursor launch hints: %q", stdout.String())
 	}
 }
 
@@ -1276,6 +1281,215 @@ func TestLaunchMaterializesOrgSkillsIntoLaunchRootAndMirror(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "my-cli", "SKILL.md")); err != nil {
 		t.Fatalf("global self-skill missing: %v", err)
 	}
+}
+
+func TestLaunchGrokUsesGrokSkillsMirror(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
+	var stdout, stderr bytes.Buffer
+	var gotDir string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "grok"}); err != nil {
+		t.Fatal(err)
+	}
+	if gotDir != umbrellaRoot {
+		t.Fatalf("gotDir = %q, want %q", gotDir, umbrellaRoot)
+	}
+	for _, base := range []string{
+		filepath.Join(umbrellaRoot, ".agents", "skills"),
+		filepath.Join(umbrellaRoot, ".grok", "skills"),
+	} {
+		assertLaunchSkill(t, filepath.Join(base, "acme-handbook"), "acme:handbook")
+		assertLaunchSkill(t, filepath.Join(base, "acme-calendar"), "acme:calendar")
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("grok should not write the claude skill mirror: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".grok", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("org skill was installed globally: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".grok", "skills", "my-cli", "SKILL.md")); err != nil {
+		t.Fatalf("global self-skill missing: %v", err)
+	}
+}
+
+func TestLaunchPrintGrokCommandUsesGrokBinary(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "ai",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+		"--no-session",
+		"--no-refresh",
+		"--no-update-check",
+		"--print",
+		"grok",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.TrimSpace(stdout.String())
+	wantPrefix := "cd " + umbrellaRoot + " && grok"
+	if got != wantPrefix {
+		t.Fatalf("launch --print grok stdout = %q, want %q", stdout.String(), wantPrefix+"\n")
+	}
+}
+
+func TestLaunchCursorUsesCursorAgentAndAgentsSkills(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
+	var stdout, stderr bytes.Buffer
+	var gotPath, gotDir string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "cursor-agent" {
+				t.Fatalf("lookPath name = %q, want cursor-agent", name)
+			}
+			return "/test/bin/cursor-agent", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotPath = path
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "cursor"}); err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/test/bin/cursor-agent" || gotDir != umbrellaRoot {
+		t.Fatalf("exec path=%q dir=%q, want cursor-agent in %q", gotPath, gotDir, umbrellaRoot)
+	}
+	for _, slug := range []string{"acme-handbook", "acme-calendar"} {
+		assertLaunchSkill(t, filepath.Join(umbrellaRoot, ".agents", "skills", slug), "acme:"+strings.TrimPrefix(slug, "acme-"))
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".cursor", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("cursor should consume .agents directly, not create a mirror: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".cursor", "skills", "my-cli", "SKILL.md")); err != nil {
+		t.Fatalf("global Cursor self-skill missing: %v", err)
+	}
+}
+
+func TestLaunchPrintCursorUsesCollisionSafeCommand(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot,
+		"--no-session", "--no-refresh", "--no-update-check", "--print", "cursor",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.TrimSpace(stdout.String()), "cd "+umbrellaRoot+" && cursor-agent"; got != want {
+		t.Fatalf("launch --print cursor = %q, want %q", got, want)
+	}
+}
+
+func TestLookupCursorBinaryHandlesSharedAgentName(t *testing.T) {
+	t.Run("prefers cursor-agent", func(t *testing.T) {
+		probed := false
+		a := app{
+			lookPath: func(name string) (string, error) {
+				return "/test/bin/" + name, nil
+			},
+			harnessProbe: func(path string, args ...string) ([]byte, error) {
+				probed = true
+				return nil, nil
+			},
+		}
+		got, err := a.lookupHarnessBinary(harness.Cursor)
+		if err != nil || got != "/test/bin/cursor-agent" || probed {
+			t.Fatalf("lookup = %q, %v, probed=%v", got, err, probed)
+		}
+	})
+
+	t.Run("accepts validated official agent", func(t *testing.T) {
+		a := app{
+			lookPath: func(name string) (string, error) {
+				if name == "cursor-agent" {
+					return "", exec.ErrNotFound
+				}
+				return "/test/bin/agent", nil
+			},
+			harnessProbe: func(path string, args ...string) ([]byte, error) {
+				return []byte("Start the Cursor Agent\n"), nil
+			},
+		}
+		got, err := a.lookupHarnessBinary(harness.Cursor)
+		if err != nil || got != "/test/bin/agent" {
+			t.Fatalf("lookup = %q, %v", got, err)
+		}
+	})
+
+	t.Run("rejects Grok agent collision", func(t *testing.T) {
+		a := app{
+			lookPath: func(name string) (string, error) {
+				if name == "cursor-agent" {
+					return "", exec.ErrNotFound
+				}
+				return "/test/bin/agent", nil
+			},
+			harnessProbe: func(path string, args ...string) ([]byte, error) {
+				return []byte("Grok Build TUI\n"), nil
+			},
+		}
+		if got, err := a.lookupHarnessBinary(harness.Cursor); err == nil || got != "" || !strings.Contains(err.Error(), "not Cursor CLI") {
+			t.Fatalf("lookup = %q, %v", got, err)
+		}
+	})
+}
+
+func TestCursorAgentCollisionDiagnosticNamesWrongProduct(t *testing.T) {
+	lookupErr := errors.New("/test/bin/agent is not Cursor CLI (the generic agent name is shared by other harnesses)")
+
+	t.Run("existing launch target", func(t *testing.T) {
+		var stderr bytes.Buffer
+		a := app{stderr: &stderr}
+		a.printLaunchMissingHarness(harness.Cursor, "/tmp/work", []string{"hello"}, false, lookupErr)
+		out := stderr.String()
+		for _, want := range []string{
+			"resolved `agent` executable belongs to another harness",
+			"https://cursor.com/docs/cli/installation",
+			"cd /tmp/work && cursor-agent hello",
+		} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("diagnostic = %q, missing %q", out, want)
+			}
+		}
+	})
+
+	t.Run("new session remains uncreated", func(t *testing.T) {
+		var stderr bytes.Buffer
+		a := app{stderr: &stderr}
+		a.printLaunchMissingHarness(harness.Cursor, "", []string{"hello"}, true, lookupErr)
+		out := stderr.String()
+		for _, want := range []string{
+			"resolved `agent` executable belongs to another harness",
+			"no session was created",
+			"rerun the same my ai command",
+		} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("diagnostic = %q, missing %q", out, want)
+			}
+		}
+		if strings.Contains(out, "cursor-agent hello") {
+			t.Fatalf("new-session diagnostic printed an incomplete direct launch command: %q", out)
+		}
+	})
 }
 
 func TestLaunchCodexUsesAgentsSkillsWithoutMirror(t *testing.T) {

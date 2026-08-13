@@ -97,6 +97,25 @@ func TestUnimplementedAndUnknownCommands(t *testing.T) {
 	}
 }
 
+func TestKnownHarnessEnvironmentIncludesGrokAndCursor(t *testing.T) {
+	keys := []string{"CLAUDECODE", "CODEX_THREAD_ID", "OPENCODE", "GROK_SESSION_ID", "CURSOR_AGENT", "CMUX_AGENT_LAUNCH_KIND"}
+	for _, key := range keys {
+		t.Setenv(key, "")
+	}
+	if isKnownHarnessEnv() {
+		t.Fatal("empty harness environment detected as active")
+	}
+	for _, key := range []string{"GROK_SESSION_ID", "CURSOR_AGENT"} {
+		t.Run(key, func(t *testing.T) {
+			t.Setenv(key, "1")
+			if !isKnownHarnessEnv() {
+				t.Fatalf("%s was not detected", key)
+			}
+			t.Setenv(key, "")
+		})
+	}
+}
+
 func TestCatalogListHumanFormatting(t *testing.T) {
 	home := t.TempDir()
 	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")

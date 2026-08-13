@@ -47,7 +47,7 @@ func (a app) runSkills(args []string) error {
 }
 
 func (a app) printSkillsUsage() {
-	fmt.Fprintln(a.stdout, `Usage:
+	fmt.Fprintf(a.stdout, `Usage:
   my skills self install [harness...] | --all [--print] [--copy] [--link] [--force] [--json] [--home DIR]
   my skills self uninstall [harness...] | --all [--print] [--force] [--json] [--home DIR]
   my skills self status [harness...] | --all [--json] [--home DIR]
@@ -60,7 +60,7 @@ func (a app) printSkillsUsage() {
   my skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
 
 Harnesses:
-  claude-code, codex, opencode, antigravity
+  %s
 
 With no harnesses, install targets all supported harnesses and silently skips
 missing ones. If synced manifests are registered, skills commands use them by
@@ -68,7 +68,8 @@ default; --source forces a local skills directory.
 
 Manifest skill commands only refresh harness skill directories. Run my setup
 to regenerate workspace guidance such as AGENTS.md. Self-skill commands
-install My AI's bundled CLI guidance into harness skill directories.`)
+install My AI's bundled CLI guidance into harness skill directories.
+`, harness.Names())
 }
 
 func (a app) runSkillsSelf(args []string) error {

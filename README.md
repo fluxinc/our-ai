@@ -3,8 +3,8 @@
 `my` is a small, dependency-free CLI that bootstraps an AI agent's working
 environment from a single organization manifest. One command turns a fresh
 machine into one where installed AI harnesses — Claude Code, Codex, OpenCode,
-Antigravity — share the same company context, manifest-defined launch profiles,
-and local tooling.
+Antigravity, Grok, and Cursor — share the same company context,
+manifest-defined launch profiles, and local tooling.
 
 It is built for a world where **agents are the primary operators**. Humans own
 intent — goals, products, decisions — and express it as content in a Git repo.
@@ -582,11 +582,14 @@ reported rather than touched.
 | Codex | `~/.codex/skills/<skill>` |
 | OpenCode | `~/.config/opencode/skills/<skill>` |
 | Antigravity | `~/.agents/skills/<skill>` |
+| Grok | `~/.grok/skills/<skill>` |
+| Cursor | `~/.cursor/skills/<skill>` |
 
 Managed org-skill launches use the project-local seam where available: Claude
-Code receives a launch-root `.claude/skills` mirror, Codex and Antigravity read
-launch-root `.agents/skills`, and OpenCode stays on its global path as a
-compatibility exception.
+Code receives a launch-root `.claude/skills` mirror, Grok receives a launch-root
+`.grok/skills` mirror, Codex and Antigravity read launch-root `.agents/skills`,
+Cursor also reads launch-root `.agents/skills`, and OpenCode stays on its global
+path as a compatibility exception.
 
 Missing harnesses are skipped silently — `my` configures what is present and
 never fails because a harness is absent.
@@ -646,6 +649,14 @@ rationale.
 
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
+
+- **Shipped (v0.38.0) — Grok and Cursor CLI harnesses.** Grok and Cursor
+  remain distinct products and are integrated as distinct harnesses: both read
+  generated `AGENTS.md`, receive launch-scoped organization skills through
+  their proven project seams, support onboarding and My AI sessions, and get
+  the bundled `my-cli` self-skill in their native user skill directories.
+  Cursor launch resolution avoids the shared `agent` executable collision.
+  Plan: [Grok and Cursor harness integration](docs/plans/2026-08-13-grok-cursor-harness-integration.md).
 
 - **Shipped (v0.37.0, beta) — governed organizations.** The reviewed security core includes:
   provider-backed authorization, lossless revocation quarantine, digest-bound

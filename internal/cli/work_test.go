@@ -433,6 +433,54 @@ func TestSessionJoinLaunchesExistingSession(t *testing.T) {
 	}
 }
 
+func TestSessionJoinSupportsGrokAndCursor(t *testing.T) {
+	for _, tc := range []struct {
+		harness string
+		command string
+	}{
+		{harness: "grok", command: "grok"},
+		{harness: "cursor", command: "cursor-agent"},
+	} {
+		t.Run(tc.harness, func(t *testing.T) {
+			home, workspaceRoot := setupCLIRecordWorkspace(t)
+			umbrellaRoot := filepath.Dir(workspaceRoot)
+			ensureCLIGuidance(t, home, umbrellaRoot)
+			var stdout, stderr bytes.Buffer
+			a := app{stdout: &stdout, stderr: &stderr}
+			if err := a.run([]string{"my", "session", "start", "--slug", tc.harness, "--home", home, "--json"}); err != nil {
+				t.Fatal(err)
+			}
+			var report sessionStartCommandReport
+			if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+				t.Fatal(err)
+			}
+
+			var gotPath, gotDir string
+			a = app{
+				stdout: &stdout,
+				stderr: &stderr,
+				lookPath: func(name string) (string, error) {
+					if name != tc.command {
+						t.Fatalf("lookPath name = %q, want %q", name, tc.command)
+					}
+					return "/test/bin/" + name, nil
+				},
+				execHarness: func(path string, args []string, dir string) error {
+					gotPath = path
+					gotDir = dir
+					return nil
+				},
+			}
+			if err := a.run([]string{"my", "session", "join", report.ID, tc.harness, "--home", home}); err != nil {
+				t.Fatalf("session join %s: %v\nstderr: %s", tc.harness, err, stderr.String())
+			}
+			if gotPath != "/test/bin/"+tc.command || gotDir != report.Path {
+				t.Fatalf("exec path=%q dir=%q, want %s in %q", gotPath, gotDir, tc.command, report.Path)
+			}
+		})
+	}
+}
+
 func TestSessionAndWorkGroupHelp(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}

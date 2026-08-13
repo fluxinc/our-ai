@@ -7,8 +7,8 @@ This skill teaches a harness how to operate inside a My AI workspace.
 
 `my` is a small, dependency-free CLI that bootstraps an AI agent's working
 environment from a single organization **manifest**. One command gives installed
-harnesses (Claude Code, Codex, OpenCode, Antigravity) the same company context,
-manifest-defined launch profiles, and local tooling.
+harnesses (Claude Code, Codex, OpenCode, Antigravity, Grok, Cursor) the same
+company context, manifest-defined launch profiles, and local tooling.
 
 ## When To Use
 
@@ -39,8 +39,9 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
 - **Skill** — a capability exposed to harnesses. Organization skills are
   *static* (a directory in the manifest repo) or *tool-provided*; `my ai`
   composes them into the launch root's `.agents/skills/` (with a `.claude/skills/`
-  mirror for Claude Code) for harnesses with a project-local skill seam (Claude
-  Code, Codex, Antigravity). Pick the loadout with `my ai --skills all|none|<id,...>`
+  mirror for Claude Code and a `.grok/skills/` mirror for Grok) for harnesses with
+  a project-local skill seam (Claude Code, Codex, Antigravity, Grok, Cursor).
+  Pick the loadout with `my ai --skills all|none|<id,...>`
   or `my ai --profile <id>` (mutually exclusive); with no selector, `my ai`
   uses the default for the launch target: selected role skills for a base
   umbrella, workspace-satisfied skills for a session, all org skills for an

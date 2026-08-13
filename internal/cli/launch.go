@@ -274,9 +274,9 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 		}
 		targetDir = target.Dir
 	}
-	binary, err := a.lookupPath(commandName)
+	binary, err := a.lookupHarnessBinary(h)
 	if err != nil {
-		a.printLaunchMissingHarness(commandName, targetDir, harnessArgs, createsNewSession)
+		a.printLaunchMissingHarness(h, targetDir, harnessArgs, createsNewSession, err)
 		return errAlreadyPrinted
 	}
 	if createsNewSession {
@@ -384,7 +384,19 @@ func (a app) maybePrintStructuredCommandError(err error) error {
 	return err
 }
 
-func (a app) printLaunchMissingHarness(commandName, targetDir string, args []string, newSession bool) {
+func (a app) printLaunchMissingHarness(h harness.Harness, targetDir string, args []string, newSession bool, lookupErr error) {
+	commandName := h.CommandName()
+	if h == harness.Cursor && lookupErr != nil && strings.Contains(lookupErr.Error(), "not Cursor CLI") {
+		fmt.Fprintln(a.stderr, "Cursor CLI not found: the resolved `agent` executable belongs to another harness")
+		if newSession {
+			fmt.Fprintln(a.stderr, "no session was created")
+			fmt.Fprintln(a.stderr, "install Cursor CLI from https://cursor.com/docs/cli/installation, then rerun the same my ai command")
+			return
+		}
+		fmt.Fprintln(a.stderr, "install Cursor CLI from https://cursor.com/docs/cli/installation, then rerun:")
+		fmt.Fprintln(a.stderr, shellCommandLine(targetDir, commandName, args))
+		return
+	}
 	if newSession {
 		fmt.Fprintf(a.stderr, "%s not found on PATH; no session was created\n", commandName)
 		fmt.Fprintf(a.stderr, "install %s, then rerun the same my ai command\n", commandName)
@@ -564,7 +576,10 @@ Examples:
   my ai -r codex
   my ai -r 2026-06-11-ab12 codex
   my ai --repo sample-service codex
-  my ai --print codex
+  my ai --print grok
+  my ai grok
+  my ai --print cursor
+  my ai cursor
 
 Options:
   --home DIR        override home directory
@@ -890,6 +905,50 @@ func (a app) lookupPath(name string) (string, error) {
 		return a.lookPath(name)
 	}
 	return exec.LookPath(name)
+}
+
+func (a app) lookupHarnessBinary(h harness.Harness) (string, error) {
+	var lastErr error
+	for _, name := range h.CommandCandidates() {
+		path, err := a.lookupPath(name)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if h == harness.Cursor && name == "agent" {
+			ok, err := a.probeCursorAgent(path)
+			if err != nil {
+				lastErr = fmt.Errorf("probe %s: %w", path, err)
+				continue
+			}
+			if !ok {
+				lastErr = fmt.Errorf("%s is not Cursor CLI (the generic agent name is shared by other harnesses)", path)
+				continue
+			}
+		}
+		return path, nil
+	}
+	if lastErr == nil {
+		lastErr = exec.ErrNotFound
+	}
+	return "", lastErr
+}
+
+func (a app) probeCursorAgent(path string) (bool, error) {
+	var (
+		out []byte
+		err error
+	)
+	if a.harnessProbe != nil {
+		out, err = a.harnessProbe(path, "--help")
+	} else {
+		out, err = exec.Command(path, "--help").CombinedOutput()
+	}
+	if err != nil {
+		return false, err
+	}
+	help := strings.ToLower(string(out))
+	return strings.Contains(help, "cursor agent") && !strings.Contains(help, "grok build"), nil
 }
 
 func (a app) runHarness(path string, args []string, dir string) error {
