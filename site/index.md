@@ -45,19 +45,36 @@ works.
 
 ## First Run
 
+Prerequisites are Git, `curl`, and at least one supported AI harness already
+installed and authenticated. On Windows, use the Linux CLI and Git together in
+[one WSL distribution](/guide/windows-wsl), with the umbrella under `/home`.
+
+Create a new organization manifest and local umbrella:
+
 ```sh
 my init acme --name "Acme"
-my onboarding
+cd "$(my root)"
+my setup
+my doctor
 my ai codex
 ```
 
-`my onboarding` launches guided onboarding in a harness when run interactively.
-Use `my onboarding --no-agent` for the deterministic setup walkthrough.
-`my ai codex` performs the same root resolution and guidance freshness check
-before starting a harness. `my init` creates a private manifest repo (the
-control plane) plus a content repo at `~/acme/workspace` (the actual
-workspace), all local and working offline; `my publish` later creates the
-private remotes and pushes both.
+Or join an existing organization manifest:
+
+```sh
+my manifests add acme git@github.com:acme/manifest.git
+my manifests sync acme
+my setup --manifest acme
+cd "$(my root)"
+my doctor
+my ai codex
+```
+
+`my init` creates a private manifest control plane plus a content workspace,
+all local and working offline. Preview publication with `my publish --print`,
+then run `my publish` when the repositories should be created and pushed.
+See the [complete Quick Start](/guide/quickstart) for prerequisites, harness
+choices, guided onboarding, daily sync, sessions, and publication.
 
 ## The Operating Shape
 

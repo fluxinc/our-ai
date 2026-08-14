@@ -27,7 +27,7 @@ export default defineConfig({
       { text: 'Guide', link: '/guide/what-is-my-cli' },
       { text: 'CLI', link: '/guide/cli-reference' },
       {
-        text: 'v0.38.0',
+        text: 'v0.39.0',
         items: [
           { text: 'Changelog', link: '/changelog' },
           { text: 'GitHub', link: 'https://github.com/fluxinc/my-cli' },
@@ -40,6 +40,7 @@ export default defineConfig({
         items: [
           { text: 'What is My AI?', link: '/guide/what-is-my-cli' },
           { text: 'Quickstart', link: '/guide/quickstart' },
+          { text: 'Windows with WSL', link: '/guide/windows-wsl' },
           { text: 'Onboarding', link: '/guide/onboarding' },
           { text: 'The Model', link: '/guide/the-model' },
         ],

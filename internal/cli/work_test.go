@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"os"
@@ -12,6 +13,266 @@ import (
 	"github.com/fluxinc/my-cli/internal/umbrella"
 	"github.com/fluxinc/my-cli/internal/worksession"
 )
+
+func TestSessionLeftoversFindsRawAndRegisteredWorktrees(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	active := startCLIDoctorSession(t, nil, home)
+	leftoverPath := filepath.Join(t.TempDir(), "raw worktree")
+	runCLIGit(t, workspaceRoot, "worktree", "add", "-b", "agent/raw-leftover", leftoverPath)
+	writeCLITestFile(t, filepath.Join(leftoverPath, "raw.md"), "draft\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "session", "leftovers", "--home", home, "--umbrella", umbrellaRoot, "--json"}); err != nil {
+		t.Fatalf("leftovers: %v\nstderr: %s", err, stderr.String())
+	}
+	var report leftoverCommandReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("parse leftovers: %v\n%s", err, stdout.String())
+	}
+	if len(report.Entries) != 2 {
+		t.Fatalf("entries = %#v", report.Entries)
+	}
+	raw := findLeftoverCommandRow(t, report.Entries, leftoverPath)
+	if raw.Class != "leftover" || len(raw.Dirty) != 1 ||
+		!strings.Contains(raw.NextCommand, "status --short") {
+		t.Fatalf("raw = %#v", raw)
+	}
+	registered := findLeftoverCommandRow(t, report.Entries, active.Mounts[0].WorktreePath)
+	if registered.Class != "registered-active" || registered.SessionID != active.ID ||
+		!strings.Contains(registered.NextCommand, "my session finish "+active.ID) {
+		t.Fatalf("registered = %#v", registered)
+	}
+}
+
+func TestSessionCloseWorktreeRequiresConfirmationAndPreservesBranch(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	leftoverPath := filepath.Join(t.TempDir(), "clean leftover")
+	runCLIGit(t, workspaceRoot, "worktree", "add", "-b", "agent/clean-leftover", leftoverPath)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{"my", "session", "close-worktree", leftoverPath, "--home", home, "--umbrella", umbrellaRoot})
+	if err == nil || !strings.Contains(err.Error(), "requires --yes") {
+		t.Fatalf("unconfirmed close error = %v", err)
+	}
+	if _, err := os.Stat(leftoverPath); err != nil {
+		t.Fatalf("unconfirmed close changed worktree: %v", err)
+	}
+
+	if err := a.run([]string{"my", "session", "close-worktree", leftoverPath, "--yes", "--home", home, "--umbrella", umbrellaRoot, "--json"}); err != nil {
+		t.Fatalf("confirmed close: %v\nstderr: %s", err, stderr.String())
+	}
+	if _, err := os.Stat(leftoverPath); !os.IsNotExist(err) {
+		t.Fatalf("worktree still exists: %v", err)
+	}
+	runCLIGit(t, workspaceRoot, "show-ref", "--verify", "refs/heads/agent/clean-leftover")
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"my", "session", "leftovers", "--home", home, "--umbrella", umbrellaRoot, "--json"}); err != nil {
+		t.Fatalf("leftovers after close: %v\nstderr: %s", err, stderr.String())
+	}
+	var after leftoverCommandReport
+	if err := json.Unmarshal(stdout.Bytes(), &after); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range after.Entries {
+		if samePath(row.Path, leftoverPath) {
+			t.Fatalf("closed leftover still listed: %#v", row)
+		}
+	}
+}
+
+func TestSessionCloseWorktreeRejectsUnknownPath(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	unknown := filepath.Join(t.TempDir(), "not-inventoried")
+	if err := os.MkdirAll(unknown, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{"my", "session", "close-worktree", unknown, "--yes", "--home", home, "--umbrella", umbrellaRoot})
+	if err == nil || !strings.Contains(err.Error(), "not in the current managed leftover inventory") {
+		t.Fatalf("unknown close error = %v", err)
+	}
+	if _, err := os.Stat(workspaceRoot); err != nil {
+		t.Fatalf("unknown close touched base checkout: %v", err)
+	}
+}
+
+func TestSessionCloseWorktreeDeclinedAndDoctorAreInspectOnly(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	leftoverPath := filepath.Join(t.TempDir(), "declined")
+	runCLIGit(t, workspaceRoot, "worktree", "add", "-b", "agent/declined", leftoverPath)
+
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout, stderr: &stderr,
+		stdin: bufio.NewReader(strings.NewReader("n\n")), interactive: true,
+	}
+	if err := a.run([]string{"my", "session", "close-worktree", leftoverPath, "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatalf("declined close: %v", err)
+	}
+	if _, err := os.Stat(leftoverPath); err != nil {
+		t.Fatalf("declined close changed worktree: %v", err)
+	}
+
+	stdout.Reset()
+	a.interactive = false
+	if err := a.run([]string{"my", "doctor", "--fix", "--home", home, "--umbrella", umbrellaRoot, "--json"}); err != nil {
+		t.Fatalf("doctor --fix: %v\nstderr: %s", err, stderr.String())
+	}
+	var report struct {
+		Leftovers []doctorItem
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Leftovers) != 1 || !samePath(report.Leftovers[0].Path, leftoverPath) {
+		t.Fatalf("doctor leftovers = %#v", report.Leftovers)
+	}
+	if _, err := os.Stat(leftoverPath); err != nil {
+		t.Fatalf("doctor --fix changed worktree: %v", err)
+	}
+}
+
+func TestDoctorFixDoesNotPruneDetachedUniqueCommit(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	missing := filepath.Join(t.TempDir(), "detached-missing")
+	runCLIGit(t, workspaceRoot, "worktree", "add", "--detach", missing)
+	writeCLITestFile(t, filepath.Join(missing, "unique.txt"), "unique\n")
+	runCLIGit(t, missing, "add", ".")
+	runCLIGit(t, missing, "commit", "-m", "unique detached work")
+	head := strings.TrimSpace(gitCLIOutput(t, missing, "rev-parse", "HEAD"))
+	if err := os.RemoveAll(missing); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "doctor", "--fix", "--home", home, "--umbrella", umbrellaRoot, "--json"}); err != nil {
+		t.Fatalf("doctor --fix: %v\nstderr: %s", err, stderr.String())
+	}
+	var report struct {
+		Leftovers []doctorItem
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	wantBase := filepath.Base(missing)
+	for _, item := range report.Leftovers {
+		if filepath.Base(item.Path) == wantBase || strings.HasSuffix(item.Name, wantBase) {
+			found = true
+			if !strings.Contains(item.Message, "prunable") {
+				t.Fatalf("doctor leftover = %#v", item)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("prunable leftover missing from doctor: %#v", report.Leftovers)
+	}
+	list := gitCLIOutput(t, workspaceRoot, "worktree", "list", "--porcelain")
+	if !strings.Contains(list, filepath.Base(missing)) {
+		t.Fatalf("doctor --fix pruned worktree metadata:\n%s", list)
+	}
+	runCLIGit(t, workspaceRoot, "cat-file", "-e", head+"^{commit}")
+}
+
+func TestSessionLeftoversIncludesRetainedCatalogClone(t *testing.T) {
+	home, umbrellaRoot, _ := setupCLIRepoCatalog(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "repos", "add", "sample-service", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatalf("repos add: %v\nstderr: %s", err, stderr.String())
+	}
+	state, err := umbrella.LoadState(umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.SelectedRepos = nil
+	if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
+		t.Fatal(err)
+	}
+
+	repoPath := filepath.Join(umbrellaRoot, "repos", "sample-service")
+	leftoverPath := filepath.Join(t.TempDir(), "retained catalog leftover")
+	runCLIGit(t, repoPath, "worktree", "add", "-b", "agent/catalog-leftover", leftoverPath)
+
+	stdout.Reset()
+	if err := a.run([]string{"my", "session", "leftovers", "--home", home, "--umbrella", umbrellaRoot, "--json"}); err != nil {
+		t.Fatalf("leftovers: %v\nstderr: %s", err, stderr.String())
+	}
+	var report leftoverCommandReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	row := findLeftoverCommandRow(t, report.Entries, leftoverPath)
+	if row.RepoKind != "repo" || row.RepoID != "sample-service" || row.Class != "leftover" {
+		t.Fatalf("catalog leftover = %#v", row)
+	}
+}
+
+func TestSessionLeftoversManifestCheckoutRequiresAll(t *testing.T) {
+	home, umbrellaRoot, manifestCache, _ := setupCLITrackedManifest(t)
+	leftoverPath := filepath.Join(t.TempDir(), "manifest topic")
+	runCLIGit(t, manifestCache, "worktree", "add", "-b", "admin/topic", leftoverPath)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	for _, tc := range []struct {
+		name string
+		all  bool
+		want int
+	}{
+		{name: "default", want: 0},
+		{name: "all", all: true, want: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stdout.Reset()
+			stderr.Reset()
+			args := []string{"my", "session", "leftovers", "--home", home, "--umbrella", umbrellaRoot, "--json"}
+			if tc.all {
+				args = append(args, "--all")
+			}
+			if err := a.run(args); err != nil {
+				t.Fatalf("leftovers: %v\nstderr: %s", err, stderr.String())
+			}
+			var report leftoverCommandReport
+			if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+				t.Fatal(err)
+			}
+			if len(report.Entries) != tc.want {
+				t.Fatalf("entries = %#v, want %d", report.Entries, tc.want)
+			}
+			if tc.all {
+				row := findLeftoverCommandRow(t, report.Entries, leftoverPath)
+				if row.RepoKind != "manifest" || row.Class != "leftover" ||
+					strings.Contains(row.NextCommand, "close-worktree") {
+					t.Fatalf("manifest leftover = %#v", row)
+				}
+			}
+		})
+	}
+}
+
+func findLeftoverCommandRow(t *testing.T, rows []leftoverCommandRow, path string) leftoverCommandRow {
+	t.Helper()
+	for _, row := range rows {
+		if samePath(row.Path, path) {
+			return row
+		}
+	}
+	t.Fatalf("leftover %s not found in %#v", path, rows)
+	return leftoverCommandRow{}
+}
 
 func configureCLIRecordWorkspaceContractAndRole(t *testing.T, home, umbrellaRoot string) {
 	t.Helper()

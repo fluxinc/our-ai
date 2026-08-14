@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.39.0 - 2026-08-14
+
+### Added
+
+- `my session leftovers` inventories registered and raw Git worktrees across
+  exact umbrella content mounts and cloned catalog repositories; `my doctor`
+  reports the same findings without mutating Git state. Sync emits a
+  non-blocking informational row when a content-mount leftover has commits not
+  present in its base checkout.
+- `my session close-worktree <path>` safely removes one clean named-branch
+  leftover after confirmation while preserving its branch. It refuses base,
+  active-session, locked, missing, detached, dirty, and untracked worktrees and
+  never force-removes or prunes.
+- First-run documentation now covers prerequisites, creating and publishing a
+  new manifest, joining an existing manifest, setup, operational checks, and a
+  Windows WSL installation path that keeps Linux Git and the umbrella together.
+
+### Changed
+
+- Generated guidance and the bundled self-skill direct agents to prefer My AI
+  sessions and inspect leftover worktrees before stopping work.
+
 ## 0.38.0 - 2026-08-13
 
 ### Added

@@ -13,15 +13,36 @@ those capabilities onto every agent surface, the same way, every time.
 
 Documentation: https://my-cli.com/
 
+Prerequisites: Git, `curl`, `tar`, and either `sha256sum` or `shasum`, plus at
+least one supported harness CLI. The GitHub CLI (`gh`) is only needed when
+`my publish` creates repositories or when your normal private-HTTPS Git
+authentication uses it. Windows users should run the Linux CLI and Git
+together inside [WSL](https://my-cli.com/guide/windows-wsl), with the umbrella
+under the WSL home directory.
+
 ```sh
 curl -sSL https://raw.githubusercontent.com/fluxinc/my-cli/master/install.sh | sh
 
+# Create and register a new local organization manifest:
 my init acme --name "Acme"
-my onboarding --harness codex
+my setup
+cd "$(my root)"
 my ai codex
 ```
 
-That's the whole first run. `my onboarding` launches a harness in an interactive
+To join an organization that already has a manifest:
+
+```sh
+my manifests add acme <manifest-git-url>
+my manifests sync acme
+my setup --manifest acme
+cd "$(my root)"
+my ai codex
+```
+
+Those are the two complete first-run paths: produce a manifest with `my init`,
+or install/register an existing one with `my manifests add`; then materialize
+the umbrella with `my setup` and launch from it. `my onboarding` launches a harness in an interactive
 terminal, greets the operator, and starts a split-pane walkthrough where the
 operator runs small sets of validated `my` commands while the model explains
 and pauses after each set.
@@ -103,6 +124,8 @@ my ai -r codex                         # resume the only active session, or pick
 my ai -r 2026-06-11-ab12 codex
 my ai --repo sample-service codex
 my ai --print codex                    # print cd <umbrella> && codex
+my session leftovers                   # raw worktrees not owned by an active session
+my session close-worktree <path> --yes # close a clean leftover; preserve its branch
 ```
 
 `ai` refuses to start against missing or stale generated guidance. Pass
@@ -569,10 +592,15 @@ so an agent that hits a wall can recover without a human.
 `my doctor` fetches refs before reporting behind/ahead counts by default; use
 `--no-fetch` for an offline view labeled as of the last fetch. It also reports
 service materialization health, active work sessions, missing session
-worktrees, and archived session counts. `--fix` only fast-forwards clean stale
+worktrees, unregistered leftover worktrees, and archived session counts.
+`--fix` only fast-forwards clean stale
 manifest/content checkouts and reconciles derived guidance, MCP config, and
 skills; dirty, diverged, repo, remote-unknown checkouts, and session work are
-reported rather than touched.
+reported rather than touched. It never removes, prunes, merges, or force-cleans
+worktrees. Use `my session leftovers` for exact path-bound remediation.
+Sync also prints a non-blocking informational row when a content-mount
+leftover has commits absent from its base checkout; it never turns that row
+into a pull or publish hold.
 
 ## Supported Harnesses
 
@@ -649,6 +677,15 @@ rationale.
 
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
+
+- **Shipped (v0.39.0) — leftover worktree detection and complete first
+  run.** `my session leftovers` and doctor now find raw harness-created
+  worktrees through Git porcelain across content mounts and retained catalog
+  clones. `close-worktree` can explicitly remove only a clean, named-branch
+  leftover while preserving its branch; My AI never auto-prunes, force-removes,
+  merges, or deletes it. Public Quickstart now covers prerequisites, WSL, both
+  manifest creation and existing-manifest registration, setup, first launch,
+  sessions, and publication. Plan: [worktree leak detection and first run](docs/plans/2026-08-14-worktree-leak-detection.md).
 
 - **Shipped (v0.38.0) — Grok and Cursor CLI harnesses.** Grok and Cursor
   remain distinct products and are integrated as distinct harnesses: both read

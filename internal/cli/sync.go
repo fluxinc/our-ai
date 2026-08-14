@@ -15,6 +15,7 @@ import (
 	"github.com/fluxinc/my-cli/internal/syncer"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 	"github.com/fluxinc/my-cli/internal/workspace"
+	"github.com/fluxinc/my-cli/internal/worktreecheck"
 )
 
 func (a app) runSync(args []string) error {
@@ -132,8 +133,10 @@ func (a app) runSync(args []string) error {
 		entries = withoutBlockedManifestEntries(entries, localMountBlocks)
 	}
 	gnitRoot := ""
+	syncRoot := ""
 	var sessionHolds []syncer.SessionHold
 	if root, err := resolveMyRoot(home, manifestName, umbrellaRoot); err == nil {
+		syncRoot = root
 		gnitRoot = findGnitWorkspaceRoot(root)
 		sessionHolds, err = collectSessionHolds(root)
 		if err != nil {
@@ -169,6 +172,9 @@ func (a app) runSync(args []string) error {
 		report.BackendMessage = backendMessage
 	}
 	report.Results = append(report.Results, localMountBlocks...)
+	if syncRoot != "" && syncScopeIncludesContent(scope) {
+		report.Results = append(report.Results, a.syncLeftoverResults(home, manifestName, syncRoot)...)
+	}
 	var derived *derivedReconcileReport
 	if !printOnly && !noDerived && syncScopeAllowsDerived(scope) {
 		if changedManifest, ok := changedManifestForDerived(report); ok {
@@ -208,6 +214,51 @@ func (a app) runSync(args []string) error {
 		return a.maybeJSONError(jsonOut, fmt.Errorf("one or more derived reconciliation operations failed"))
 	}
 	return nil
+}
+
+func syncScopeIncludesContent(scope string) bool {
+	return scope == "all" || scope == "local" || scope == "content"
+}
+
+// syncLeftoverResults adds non-authoritative visibility for work committed in
+// raw content-mount worktrees but absent from the base checkout. These rows do
+// not participate in sync planning, holds, mutation, or the command exit code.
+func (a app) syncLeftoverResults(home, manifestName, root string) []syncer.Result {
+	mounts, err := workspace.ListMounts(home, manifestName, root)
+	if err != nil {
+		return nil
+	}
+	var checkouts []worktreecheck.Checkout
+	for _, mount := range mounts {
+		if isGitCheckout(mount.LocalPath) {
+			checkouts = append(checkouts, worktreecheck.Checkout{ID: mount.ID, Kind: mount.Kind, Path: mount.LocalPath})
+		}
+	}
+	registrations, err := worktreeRegistrations(root)
+	if err != nil {
+		return nil
+	}
+	report := worktreecheck.InspectHeads(checkouts, registrations)
+	var results []syncer.Result
+	for _, entry := range report.Entries {
+		if !entry.Unlanded || entry.Class == worktreecheck.ClassBase || entry.Class == worktreecheck.ClassRegisteredActive {
+			continue
+		}
+		results = append(results, syncer.Result{
+			Manifest:    manifestName,
+			ID:          entry.RepoID,
+			Role:        "leftover",
+			Kind:        "worktree",
+			LocalPath:   entry.Path,
+			Branch:      entry.Branch,
+			Head:        entry.Head,
+			Status:      "attention",
+			ReasonCode:  "unlanded_worktree",
+			NextCommand: "my session leftovers",
+			Message:     "informational only: worktree commits are not in the base checkout; sync was not held",
+		})
+	}
+	return results
 }
 
 func (a app) localMountSyncBlocks(home, manifestName string) ([]syncer.Result, error) {

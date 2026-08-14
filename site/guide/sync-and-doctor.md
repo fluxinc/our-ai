@@ -34,6 +34,11 @@ Held rows include a stable `reason_code` in JSON and, when the remedy is clear,
 checkouts point at `my sync`, dirty-behind checkouts point first at the local
 status command, and diverged checkouts point at `my doctor`.
 
+When a raw content-mount worktree has commits absent from its base checkout,
+sync adds an `attention` result with reason code `unlanded_worktree` and points
+to `my session leftovers`. This row is informational: it never changes sync
+eligibility, pull/publish behavior, or exit status.
+
 Scoping and policy:
 
 ```sh
@@ -61,13 +66,15 @@ my doctor [--no-fetch] [--fix] [--json]
 The dry run for workspace repair. It reports manifest validity, per-checkout
 Git freshness (fetching refs first unless `--no-fetch`), derived
 guidance/MCP drift, legacy global org-skill drift, service materialization health,
-session health, partial Gnit topology, legacy session layout migration, and the
-last sync audit. Every
+session health, registered and raw worktree leftovers, partial Gnit topology,
+legacy session layout migration, and the last sync audit. Worktree findings
+name `my session leftovers` for exact path-bound remediation. Every
 repairable finding is marked
 `would ...` with a closing fixable count; nothing changes until you re-run
 with `--fix`, which applies exactly that plan. Findings `--fix` cannot repair
 — dirty or diverged checkouts, repo clones, session work — keep explanatory
-remediation text instead.
+remediation text instead. `my doctor --fix` never removes, prunes, merges, or
+otherwise changes worktrees.
 
 ## Startup freshness
 

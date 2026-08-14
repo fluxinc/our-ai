@@ -233,6 +233,8 @@ my session resume [session-id] [harness]  # print cd, or launch a harness in an 
 my session finish [session-id] --land     # commit session content, merge into base, remove worktrees
 my session finish [session-id] --publish  # land, then publish landed content per the sync policy
 my session finish [session-id] --discard  # delete the session's worktrees, branches, and directory
+my session leftovers [--json]             # inspect registered and raw worktrees on managed repos
+my session close-worktree <path> --yes    # remove one clean leftover while preserving its branch
 ```
 
 Use `my session join <id> <harness>` to run multiple harnesses in the same
@@ -258,6 +260,12 @@ committing them, so adopt records first (the record add commands do this
 automatically). While a session is dirty or unlanded, `my sync` holds outbound
 publish of that mount and names the session — finish or discard the session
 rather than working around the hold.
+
+Prefer My AI sessions over raw harness worktrees. Before stopping work, run
+`my session leftovers`; land registered sessions with `my session finish`, and
+only close a raw worktree after its work is landed or intentionally preserved.
+`close-worktree` refuses dirty, detached, locked, missing, active-session, and
+base worktrees. It never force-removes a worktree or deletes its branch.
 
 Catalog code repos are not included in work sessions yet. Use
 `my ai --repo <id> <harness>` for a base repo checkout, and land code changes

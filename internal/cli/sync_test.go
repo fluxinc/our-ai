@@ -1340,3 +1340,70 @@ func TestSyncHumanOutputConciseAndVerbose(t *testing.T) {
 		t.Fatalf("verbose sync stdout = %q, want backend and clean row", out)
 	}
 }
+
+func TestSyncReportsUnlandedRawContentWorktreeWithoutHolding(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	leftoverPath := filepath.Join(t.TempDir(), "unlanded sync leftover")
+	runCLIGit(t, workspaceRoot, "worktree", "add", "-b", "agent/sync-leftover", leftoverPath)
+	writeCLITestFile(t, filepath.Join(leftoverPath, "committed.md"), "committed outside base\n")
+	runCLIGit(t, leftoverPath, "add", "committed.md")
+	runCLIGit(t, leftoverPath, "commit", "-m", "leftover commit")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "sync", "--backend", "builtin", "--print", "--scope", "content",
+		"--home", home, "--umbrella", umbrellaRoot, "--json",
+	}); err != nil {
+		t.Fatalf("sync: %v\nstderr: %s", err, stderr.String())
+	}
+	var report syncCommandReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, result := range report.Results {
+		if result.Role == "leftover" && samePath(result.LocalPath, leftoverPath) {
+			found = true
+			if result.Status != "attention" || result.ReasonCode != "unlanded_worktree" ||
+				result.NextCommand != "my session leftovers" || !strings.Contains(result.Message, "sync was not held") {
+				t.Fatalf("leftover sync result = %#v", result)
+			}
+		}
+		if result.Role == "content" && result.Status == "held back" && result.ReasonCode == "unlanded_worktree" {
+			t.Fatalf("leftover incorrectly held sync: %#v", result)
+		}
+	}
+	if !found {
+		t.Fatalf("sync report lacks leftover row: %#v", report.Results)
+	}
+	if _, err := os.Stat(leftoverPath); err != nil {
+		t.Fatalf("sync changed leftover: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"my", "sync", "--backend", "builtin", "--print", "--scope", "content",
+		"--home", home, "--umbrella", umbrellaRoot,
+	}); err != nil {
+		t.Fatalf("text sync: %v\nstderr: %s", err, stderr.String())
+	}
+	if out := stdout.String(); !strings.Contains(out, "\tleftover\tattention\t") ||
+		!strings.Contains(out, filepath.Base(leftoverPath)) || !strings.Contains(out, "next=my session leftovers") {
+		t.Fatalf("text sync lacks informational leftover row: %s", out)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"my", "sync", "--backend", "builtin", "--print", "--scope", "manifest",
+		"--home", home, "--umbrella", umbrellaRoot, "--json",
+	}); err != nil {
+		t.Fatalf("manifest sync: %v\nstderr: %s", err, stderr.String())
+	}
+	if strings.Contains(stdout.String(), `"reason_code": "unlanded_worktree"`) {
+		t.Fatalf("manifest-only sync reported content leftover: %s", stdout.String())
+	}
+}

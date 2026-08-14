@@ -1,5 +1,20 @@
 # Quickstart
 
+## Prerequisites
+
+Install Git, `curl`, `tar`, and either `sha256sum` or `shasum`. You also need
+at least one supported harness CLI (for example Codex, Claude Code, Grok, or
+Cursor) before `my ai` can launch it. The GitHub CLI (`gh`) is needed only when
+`my publish` creates repositories or when your normal private-HTTPS Git
+authentication uses it.
+
+On Windows, use [WSL](./windows-wsl): install and run the Linux `my` binary,
+Git, and your harness inside the same WSL distribution. Keep the umbrella
+under `/home/<user>`, not `/mnt/c`, and do not mix Windows Git metadata with
+WSL Git.
+
+## Install My AI
+
 Install the latest release:
 
 ```sh
@@ -27,10 +42,13 @@ an offline freshness check, or `--fix` to fast-forward clean stale
 manifest/content checkouts and reconcile derived guidance, MCP config, and
 legacy global org-skill cleanup.
 
-## Create an organization
+## Choose a manifest path
+
+### Produce a new organization manifest
 
 ```sh
 my init acme --name "Acme"
+my setup --manifest acme
 ```
 
 `my init` creates two local repositories and registers the organization:
@@ -42,30 +60,46 @@ my init acme --name "Acme"
   meetings, support records, fleet records, decisions, policy, people.
 
 Everything works offline immediately and reports `local-only` until you
-publish. When you're ready to share:
+publish. Move into the generated umbrella and prove it is operational:
 
 ```sh
-my publish
+cd "$(my root)"
+my doctor
+my ai codex
 ```
 
-One command creates the two private GitHub repos (`acme-manifest` and
+When you are ready to share, preview the outward action and review it before
+running the real publish:
+
+```sh
+my publish --manifest acme --print
+my publish --manifest acme
+```
+
+The real publish creates the two private GitHub repos (`acme-manifest` and
 `acme-workspace`), points the manifest's mount at the published content repo,
 pushes both, and prints the join command for teammates. Because the manifest
 and the workspace are separate repos, you can restrict manifest pushes to
 admins while the whole team pushes content.
 
-If your team already has a manifest repo, register that instead:
+### Install an existing organization manifest
+
+If your team already has a manifest repo, register, sync, and materialize it:
 
 ```sh
 my manifests add acme <git-url>
 my manifests sync acme
+my setup --manifest acme
+cd "$(my root)"
+my doctor
+my ai codex
 ```
 
 Private GitHub manifests use your normal Git credentials. For HTTPS private
 repos, make sure `gh auth login` (or your usual Git credentials) works before
 running `my manifests sync` against a private repo.
 
-## Onboard the workspace
+## Optional guided onboarding
 
 ```sh
 my onboarding
@@ -89,7 +123,7 @@ generated guidance, and syncs default content. Organization skills are composed
 by `my ai` into the launch root. Opted-in catalog repo clones live under
 `repos/<id>` in the umbrella.
 
-## Start an agent
+## Operate from the umbrella
 
 ```sh
 my ai codex
@@ -107,6 +141,19 @@ one in an interactive terminal. Use
 `--print` to see the command without executing it, or `--setup` to reconcile
 the umbrella first. Use `my session status` or `my session list` to inspect active
 sessions; `my doctor` also reports session health.
+
+Harnesses sometimes create raw Git worktrees outside My AI's session registry.
+Before reporting repository work complete, inspect them:
+
+```sh
+my session leftovers
+my session close-worktree <exact-listed-path> --yes
+```
+
+The close command only accepts an inventoried, clean, unlocked, named-branch
+leftover. It uses ordinary non-force Git removal and preserves the branch.
+Dirty, detached, missing, locked, base, and active-session worktrees are
+reported with instructions and left untouched.
 
 At startup, `my root`, `my ai`, and `my setup` print stderr-only `notice`
 lines for checkouts auto-refresh cannot converge (dirty, ahead, behind, or

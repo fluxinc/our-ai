@@ -232,6 +232,8 @@ Usage:
   my session status [--all] [--json]
   my session list [--all] [--json]
   my session finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]
+  my session leftovers [--all] [--json]
+  my session close-worktree <path> [--yes] [--json]
   my skills self install|uninstall|status ...
   my skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
   my skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]

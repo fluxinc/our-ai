@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/fluxinc/my-cli/internal/harness"
+	"github.com/fluxinc/my-cli/internal/manifest"
 	"github.com/fluxinc/my-cli/internal/syncer"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 	"github.com/fluxinc/my-cli/internal/worksession"
 	"github.com/fluxinc/my-cli/internal/workspace"
+	"github.com/fluxinc/my-cli/internal/worktreecheck"
 )
 
 type workCommonOpts struct {
@@ -63,6 +65,16 @@ func (a app) runSessionGroup(group string, args []string) error {
 	switch args[0] {
 	case "start":
 		return a.runWorkStart(args[1:], group)
+	case "leftovers":
+		if group != "session" {
+			return fmt.Errorf("unknown work subcommand %q (expected start|status|list|resume|finish)", args[0])
+		}
+		return a.runSessionLeftovers(args[1:])
+	case "close-worktree":
+		if group != "session" {
+			return fmt.Errorf("unknown work subcommand %q (expected start|status|list|resume|finish)", args[0])
+		}
+		return a.runSessionCloseWorktree(args[1:])
 	case "join":
 		if group != "session" {
 			return fmt.Errorf("unknown work subcommand %q (expected start|status|list|resume|finish)", args[0])
@@ -76,7 +88,7 @@ func (a app) runSessionGroup(group string, args []string) error {
 		return a.runWorkFinish(args[1:], group)
 	default:
 		if group == "session" {
-			return fmt.Errorf("unknown session subcommand %q (expected start|join|status|list|resume|finish)", args[0])
+			return fmt.Errorf("unknown session subcommand %q (expected start|join|status|list|resume|finish|leftovers|close-worktree)", args[0])
 		}
 		return fmt.Errorf("unknown work subcommand %q (expected start|status|list|resume|finish)", args[0])
 	}
@@ -102,7 +114,336 @@ func (a app) printSessionGroupUsage(group string) {
   my session resume [session-id] [harness] [--json]
   my session status [--all] [--json]
   my session list [--all] [--json]
-  my session finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]`)
+  my session finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]
+  my session leftovers [--all] [--json]
+  my session close-worktree <path> [--yes] [--json]`)
+}
+
+type leftoverCommandRow struct {
+	worktreecheck.Entry
+	NextCommand string `json:"next_command,omitempty"`
+}
+
+type leftoverCommandReport struct {
+	Entries []leftoverCommandRow  `json:"entries"`
+	Issues  []worktreecheck.Issue `json:"issues,omitempty"`
+}
+
+func (a app) runSessionLeftovers(args []string) error {
+	var opts workCommonOpts
+	var all bool
+	fs := newFlagSet("my session leftovers", a.stderr)
+	bindWorkCommonFlags(fs, &opts)
+	fs.BoolVar(&all, "all", false, "also scan the registered manifest checkout")
+	rest, err := parseInterspersed(fs, args, workValueFlags())
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("usage: my session leftovers [--all] [--json]")
+	}
+	report, err := a.inspectWorktreeLeftovers(opts, all)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	commandReport := leftoverReportWithCommands(report)
+	if opts.jsonOut {
+		return printJSON(a.stdout, commandReport)
+	}
+	a.printLeftoverReport(commandReport)
+	return nil
+}
+
+func (a app) runSessionCloseWorktree(args []string) error {
+	var opts workCommonOpts
+	var yes bool
+	fs := newFlagSet("my session close-worktree", a.stderr)
+	bindWorkCommonFlags(fs, &opts)
+	fs.BoolVar(&yes, "yes", false, "confirm removing the clean worktree while preserving its branch")
+	rest, err := parseInterspersed(fs, args, workValueFlags())
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: my session close-worktree <path> [--yes] [--json]")
+	}
+	report, err := a.inspectWorktreeLeftovers(opts, false)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	var target *worktreecheck.Entry
+	for i := range report.Entries {
+		entry := &report.Entries[i]
+		if samePath(entry.Path, rest[0]) {
+			target = entry
+			break
+		}
+	}
+	if target == nil {
+		return a.maybeJSONError(opts.jsonOut, structuredCommandError{
+			code:        "unknown_worktree",
+			message:     "worktree is not in the current managed leftover inventory: " + rest[0],
+			remediation: "run my session leftovers and choose an exact listed path",
+		})
+	}
+	if err := validateCloseWorktree(*target); err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	if !yes {
+		if !a.interactive || opts.jsonOut {
+			return a.maybeJSONError(opts.jsonOut, fmt.Errorf("closing a worktree requires --yes after reviewing `my session leftovers`; branch %s will be preserved", target.Branch))
+		}
+		warning := "Remove clean worktree " + target.Path + " and preserve branch " + target.Branch + "?"
+		if target.Unlanded {
+			warning = "Remove clean unlanded worktree " + target.Path + "? Commits remain on preserved branch " + target.Branch + "."
+		}
+		confirmed, _, err := a.promptConfirm(warning, false)
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			fmt.Fprintln(a.stdout, "left worktree unchanged")
+			return nil
+		}
+	}
+	// Re-inspect immediately before mutation so dirty/lock/session state cannot
+	// silently drift between the displayed inventory and the close operation.
+	recheck, err := a.inspectWorktreeLeftovers(opts, false)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	var current *worktreecheck.Entry
+	for i := range recheck.Entries {
+		if samePath(recheck.Entries[i].Path, target.Path) {
+			current = &recheck.Entries[i]
+			break
+		}
+	}
+	if current == nil {
+		return a.maybeJSONError(opts.jsonOut, fmt.Errorf("worktree inventory changed before close; run my session leftovers again"))
+	}
+	if err := validateCloseWorktree(*current); err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	if err := worktreecheck.RemoveClean(*current); err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	result := map[string]any{
+		"status":           "closed",
+		"path":             current.Path,
+		"repo_path":        current.RepoPath,
+		"branch":           current.Branch,
+		"branch_preserved": true,
+	}
+	if opts.jsonOut {
+		return printJSON(a.stdout, result)
+	}
+	fmt.Fprintf(a.stdout, "closed worktree %s; preserved branch %s\n", current.Path, current.Branch)
+	return nil
+}
+
+func validateCloseWorktree(entry worktreecheck.Entry) error {
+	switch entry.Class {
+	case worktreecheck.ClassLeftover, worktreecheck.ClassRegisteredFinishedResidue:
+		// These are the only classes owned by the explicit close surface.
+	case worktreecheck.ClassRegisteredActive:
+		return fmt.Errorf("worktree belongs to active session %s; run my session finish %s --land|--publish|--discard", entry.SessionID, entry.SessionID)
+	case worktreecheck.ClassPrunable:
+		return fmt.Errorf("worktree path is missing; inspect retained Git metadata before running git -C %s worktree prune", shellQuote(entry.RepoPath))
+	case worktreecheck.ClassBase:
+		return fmt.Errorf("refusing to close managed base checkout %s", entry.Path)
+	default:
+		return fmt.Errorf("worktree class %s cannot be closed", entry.Class)
+	}
+	if entry.Locked {
+		return fmt.Errorf("worktree is locked; inspect why before running git -C %s worktree unlock %s", shellQuote(entry.RepoPath), shellQuote(entry.Path))
+	}
+	if !entry.Exists {
+		return fmt.Errorf("worktree path is missing; no files or Git metadata were changed")
+	}
+	if entry.Detached || entry.Branch == "" {
+		return fmt.Errorf("detached worktree cannot be closed safely; preserve HEAD first with git -C %s branch RECOVERY_BRANCH %s", shellQuote(entry.Path), shellQuote(entry.Head))
+	}
+	if len(entry.Dirty) != 0 {
+		return fmt.Errorf("worktree has %d dirty or untracked path(s); inspect with git -C %s status --short", len(entry.Dirty), shellQuote(entry.Path))
+	}
+	if entry.InspectionError != "" {
+		return fmt.Errorf("worktree could not be proven safe to close: %s", entry.InspectionError)
+	}
+	return nil
+}
+
+func (a app) inspectWorktreeLeftovers(opts workCommonOpts, includeManifest bool) (worktreecheck.Report, error) {
+	root, err := resolveWorkUmbrella(opts.home, opts.manifestName, opts.umbrellaRoot)
+	if err != nil {
+		return worktreecheck.Report{}, err
+	}
+	manifestName := opts.manifestName
+	if name, ok, err := defaultManifestNameIfAny(opts.home, manifestName, root); err != nil {
+		return worktreecheck.Report{}, err
+	} else if ok {
+		manifestName = name
+	}
+	checkouts, err := worktreeCheckouts(opts.home, manifestName, root, includeManifest)
+	if err != nil {
+		return worktreecheck.Report{}, err
+	}
+	registrations, err := worktreeRegistrations(root)
+	if err != nil {
+		return worktreecheck.Report{}, err
+	}
+	return worktreecheck.Inspect(checkouts, registrations), nil
+}
+
+func worktreeCheckouts(home, manifestName, root string, includeManifest bool) ([]worktreecheck.Checkout, error) {
+	var checkouts []worktreecheck.Checkout
+	mounts, err := workspace.ListMounts(home, manifestName, root)
+	if err != nil {
+		return nil, err
+	}
+	for _, mount := range mounts {
+		if isGitCheckout(mount.LocalPath) {
+			checkouts = append(checkouts, worktreecheck.Checkout{ID: mount.ID, Kind: mount.Kind, Path: mount.LocalPath})
+		}
+	}
+	repos, err := manifest.LoadRepoCatalog(home, manifestName)
+	if err != nil {
+		return nil, err
+	}
+	for _, repo := range repos {
+		path := umbrella.RepoPath(root, repo.ID)
+		if isGitCheckout(path) {
+			checkouts = append(checkouts, worktreecheck.Checkout{ID: repo.ID, Kind: "repo", Path: path})
+		}
+	}
+	if includeManifest {
+		doc, err := loadSingleRegisteredDoc(home, manifestName)
+		if err != nil {
+			return nil, err
+		}
+		if isGitCheckout(doc.ref.LocalPath) {
+			checkouts = append(checkouts, worktreecheck.Checkout{ID: doc.ref.Name, Kind: "manifest", Path: doc.ref.LocalPath})
+		}
+	}
+	return checkouts, nil
+}
+
+func worktreeRegistrations(root string) ([]worktreecheck.Registration, error) {
+	sessions, err := worksession.List(root)
+	if err != nil {
+		return nil, err
+	}
+	var registrations []worktreecheck.Registration
+	for _, session := range sessions {
+		for _, mount := range session.Mounts {
+			registrations = append(registrations, worktreecheck.Registration{
+				SessionID: session.ID,
+				Status:    session.Status,
+				Path:      mount.WorktreePath,
+			})
+		}
+	}
+	return registrations, nil
+}
+
+func leftoverReportWithCommands(report worktreecheck.Report) leftoverCommandReport {
+	result := leftoverCommandReport{Issues: report.Issues}
+	for _, entry := range report.Entries {
+		if entry.Class == worktreecheck.ClassBase {
+			continue
+		}
+		result.Entries = append(result.Entries, leftoverCommandRow{Entry: entry, NextCommand: leftoverNextCommand(entry)})
+	}
+	return result
+}
+
+func leftoverNextCommand(entry worktreecheck.Entry) string {
+	switch {
+	case entry.RepoKind == "manifest":
+		return "git -C " + shellQuote(entry.Path) + " status --short"
+	case entry.Class == worktreecheck.ClassRegisteredActive:
+		return "my session finish " + shellQuote(entry.SessionID) + " --land|--publish|--discard"
+	case entry.Class == worktreecheck.ClassPrunable:
+		return "git -C " + shellQuote(entry.RepoPath) + " worktree list --porcelain"
+	case entry.Locked:
+		return "git -C " + shellQuote(entry.RepoPath) + " worktree unlock " + shellQuote(entry.Path)
+	case entry.Detached || entry.Branch == "":
+		return "git -C " + shellQuote(entry.Path) + " branch RECOVERY_BRANCH " + shellQuote(entry.Head)
+	case len(entry.Dirty) != 0 || entry.InspectionError != "":
+		return "git -C " + shellQuote(entry.Path) + " status --short"
+	default:
+		return "my session close-worktree " + shellQuote(entry.Path) + " --yes"
+	}
+}
+
+func (a app) printLeftoverReport(report leftoverCommandReport) {
+	for _, issue := range report.Issues {
+		fmt.Fprintf(a.stdout, "leftover\t%s\terror\t%s\t%s\n", issue.RepoID, issue.RepoPath, issue.Error)
+	}
+	if len(report.Entries) == 0 && len(report.Issues) == 0 {
+		fmt.Fprintln(a.stdout, "no leftover worktrees")
+		return
+	}
+	for _, row := range report.Entries {
+		details := []string{"repo=" + row.RepoPath}
+		if row.Branch != "" {
+			details = append(details, "branch="+row.Branch)
+		}
+		if row.Detached {
+			details = append(details, "detached=true")
+		}
+		if row.Locked {
+			details = append(details, "locked=true")
+		}
+		if len(row.Dirty) != 0 {
+			details = append(details, fmt.Sprintf("dirty=%d", len(row.Dirty)))
+		}
+		if row.Unlanded {
+			details = append(details, "unlanded=true")
+		}
+		fmt.Fprintf(a.stdout, "leftover\t%s\t%s\t%s\t%s\n", row.RepoID, row.Class, row.Path, strings.Join(details, " "))
+		if row.NextCommand != "" {
+			fmt.Fprintf(a.stdout, "leftover\t%s\tnext\t%s\n", row.RepoID, row.NextCommand)
+		}
+	}
+}
+
+func doctorLeftoverItems(report leftoverCommandReport) []doctorItem {
+	var items []doctorItem
+	for _, issue := range report.Issues {
+		items = append(items, doctorItem{Name: issue.RepoID, Status: "error", Path: issue.RepoPath, Message: issue.Error})
+	}
+	for _, row := range report.Entries {
+		status := "warning"
+		if row.Class == worktreecheck.ClassRegisteredActive {
+			status = "active"
+		}
+		message := row.Class
+		if row.NextCommand != "" {
+			message += "; run " + row.NextCommand
+		}
+		details := []string{"repo=" + row.RepoPath}
+		if row.Branch != "" {
+			details = append(details, "branch="+row.Branch)
+		}
+		if row.Detached {
+			details = append(details, "detached=true")
+		}
+		if row.Locked {
+			details = append(details, "locked=true")
+		}
+		if len(row.Dirty) != 0 {
+			details = append(details, fmt.Sprintf("dirty=%d", len(row.Dirty)))
+		}
+		if row.Unlanded {
+			details = append(details, "unlanded=true")
+		}
+		items = append(items, doctorItem{
+			Name: row.RepoID + ":" + filepath.Base(row.Path), Status: status,
+			Path: row.Path, Message: message, Details: details,
+		})
+	}
+	return items
 }
 
 func (a app) runWorkStart(args []string, group string) error {

@@ -125,6 +125,14 @@ session only through `my session finish --land | --publish | --discard`, and
 `my sync` holds outbound publish of a mount while an active session on it is
 dirty or unlanded.
 
+Raw harness-created Git worktrees are outside that registry, so a bounded
+diagnostic inventories the exact content mounts and cloned catalog repos with
+`git worktree list --porcelain -z`. `my session leftovers` reports the result,
+and doctor exposes the same inspect-only findings. Explicit cleanup accepts one
+canonical path at a time and only uses ordinary `git worktree remove` for a
+clean named-branch leftover; branches, dirty data, detached commits, locked
+trees, missing trees, and Git's pruning/garbage-collection state are preserved.
+
 Sessions exist because writes are the risky operation: a half-edited tracked
 file or stray draft in the base checkout would otherwise ride the next
 `my sync` publish. Two mechanisms compose. Adoption-gated publishing means

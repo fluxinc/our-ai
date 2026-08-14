@@ -76,6 +76,11 @@ Operating orientation:
   role.
 - Inspect active sessions with `my session status` or `my session list`; `my
   doctor` also reports session health.
+- Prefer My AI sessions over raw `git worktree add`. If a harness or tool
+  created a raw worktree anyway, run `my session leftovers` before stopping;
+  land it through the repository's normal workflow or close an exact clean
+  leftover with `my session close-worktree <path> --yes`. Never force-remove a
+  dirty, detached, locked, missing, base, or active-session worktree.
 - Treat this base umbrella as inspection/admin space. Do not draft, edit, or
   create shared workspace content directly in base mounts unless the operator
   explicitly asks for a base edit. When your current directory is inside a

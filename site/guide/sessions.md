@@ -15,6 +15,8 @@ my session status [--all]
 my session list [--all]
 my session resume [session-id] [harness]
 my session finish [session-id] --land|--publish|--discard [--message TEXT]
+my session leftovers [--all] [--json]
+my session close-worktree <path> [--yes] [--json]
 ```
 
 ## When to use one
@@ -77,6 +79,22 @@ active session, naming the session and the finish command — half-done session
 work cannot leak into the published workspace. `my session status` shows what is
 active; `my doctor` reports session health (active state, missing worktrees,
 archived counts) alongside workspace diagnostics.
+
+Harnesses can also create raw Git worktrees outside My AI's session registry.
+Run `my session leftovers` before stopping work to inventory every worktree on
+the umbrella's content mounts and cloned catalog repositories. The report
+distinguishes base checkouts, active sessions, finished-session residue,
+prunable metadata, and unregistered leftovers; `--all` also inspects the
+manifest registry checkout. Manifest results are inspection-only because
+intentional governance/admin topic worktrees are not owned by the close verb.
+
+Use `my session finish` for registered sessions. For an unregistered clean
+named-branch worktree whose changes are already landed or deliberately kept on
+its branch, run `my session close-worktree <path>` and confirm the exact path.
+Scripts and non-interactive agents must pass `--yes`. The command preserves the
+branch and refuses base, active-session, locked, missing, detached, dirty, or
+untracked worktrees. It never passes Git's `--force`, deletes a branch, prunes
+metadata, merges work, or performs garbage collection.
 
 `my work ...` remains as a deprecated compatibility alias during the migration
 window. New commands, generated guidance, and remediation text use

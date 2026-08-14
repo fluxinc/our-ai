@@ -78,6 +78,7 @@ type doctorReport struct {
 	Fixes        []doctorItem `json:"fixes,omitempty"`
 	LastSync     []doctorItem `json:"last_sync,omitempty"`
 	Sessions     []doctorItem `json:"sessions,omitempty"`
+	Leftovers    []doctorItem `json:"leftovers,omitempty"`
 	Workspaces   []doctorItem `json:"workspaces"`
 	Tools        []doctorItem `json:"tools"`
 	Services     []doctorItem `json:"services,omitempty"`
@@ -180,6 +181,13 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 	if root != "" {
 		report.LastSync = append(report.LastSync, doctorLastSync(root))
 		report.Sessions = append(report.Sessions, doctorSessions(root)...)
+		if leftovers, err := a.inspectWorktreeLeftovers(workCommonOpts{
+			home: home, manifestName: manifestName, umbrellaRoot: root,
+		}, false); err != nil {
+			report.Leftovers = append(report.Leftovers, doctorItem{Name: "inventory", Status: "error", Path: root, Message: err.Error()})
+		} else {
+			report.Leftovers = append(report.Leftovers, doctorLeftoverItems(leftoverReportWithCommands(leftovers))...)
+		}
 		entries, entriesErr := a.collectSyncEntries(home, manifestName, root, "all")
 		if entriesErr != nil {
 			report.Coordination = append(report.Coordination, doctorItem{Name: "gnit", Status: "error", Path: root, Message: entriesErr.Error()})
@@ -1161,6 +1169,7 @@ func (a app) printDoctorReport(report doctorReport) {
 	printItems("fix", report.Fixes)
 	printItems("last-sync", report.LastSync)
 	printItems("session", report.Sessions)
+	printItems("leftover", report.Leftovers)
 	printItems("workspace", report.Workspaces)
 	printItems("tool", report.Tools)
 	printItems("service", report.Services)
