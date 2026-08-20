@@ -278,6 +278,7 @@ my admin skills remove <id|slug> --manifest-dir <checkout> [--prune-orphans]
 my admin tools add <id> --manifest-dir <checkout> --mode required|optional --purpose "..."
 my admin tools edit <id> --manifest-dir <checkout> [--purpose "..."]
 my admin tools remove <id> --manifest-dir <checkout>
+my admin repos add <id> --manifest-dir <checkout> --git-url <url> [--description "..."] [--default]
 my admin services add <id> --manifest-dir <checkout> --kind http|mcp --purpose "..." --auth-ref REF
 my admin services edit <id> --manifest-dir <checkout> [--purpose "..."]
 my admin services remove <id> --manifest-dir <checkout> [--prune-roles]
@@ -312,6 +313,7 @@ my admin mounts add|remove|sync       # alias of my mounts ...
 my admin meetings add                # alias of my meetings add
 my admin support add                 # alias of my support add
 my admin tools add|edit|remove       # edit manifest tools[]
+my admin repos add                   # edit catalog/repos.json
 my admin contract add|remove         # edit manifest contract[]
 ```
 

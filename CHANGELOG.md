@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `my admin repos add` authors validated `catalog/repos.json` declarations
+  through the same dirty-checkout and governed-admin gates as other manifest
+  control-plane commands.
+
 ## 0.39.0 - 2026-08-14
 
 ### Added

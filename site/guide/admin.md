@@ -68,6 +68,23 @@ and repeatable `--skill-install-arg` — for tools that materialize their own
 skills; `edit` clears them with `--clear-skill-install` (and install commands
 or docs URLs with the matching `--clear-*` flags).
 
+## Repository catalog
+
+Declare a Git-backed code or document repository before operators select it
+with `my repos add`:
+
+```sh
+my admin repos add sample-service \
+  --manifest-dir ~/src/acme-manifest \
+  --git-url https://github.com/acme/sample-service.git \
+  --description "Sample service source"
+```
+
+Pass `--default` when `my setup` should clone the repository automatically.
+Adding an existing id is refused unless `--force` explicitly replaces it.
+Repository catalog authoring uses the same dirty-checkout and governance gates
+as the other manifest admin commands.
+
 ## Services and roles
 
 Manifest `services` and `roles` are shared control-plane configuration. There

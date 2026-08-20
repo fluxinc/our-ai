@@ -44,6 +44,9 @@ func (a app) runAdmin(args []string) error {
 	case "tools":
 		// Manifest authoring; gated in the parsed-checkout loader.
 		return a.runAdminTools(args[1:])
+	case "repos":
+		// Manifest catalog authoring; gated in the parsed-checkout loader.
+		return a.runAdminRepos(args[1:])
 	case "roles":
 		// Manifest authoring; gated in the parsed-checkout loader.
 		return a.runAdminRoles(args[1:])
@@ -83,6 +86,7 @@ func (a app) printAdminUsage() {
   my admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
   my admin tools edit <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--clear-install-commands] [--docs-url URL|--clear-docs-url] [--skill-install-command CMD] [--skill-install-arg ARG] [--clear-skill-install] [--force] [--json]
   my admin tools remove <id> --manifest-dir DIR [--force] [--json]
+  my admin repos add <id> --manifest-dir DIR --git-url URL [--description TEXT] [--default] [--force] [--json]
   my admin roles add <id> --manifest-dir DIR --purpose TEXT [--guidance PATH] [--mount ID] [--skill namespace:name] [--tool ID] [--service ID] [--force] [--json]
   my admin roles edit <id> --manifest-dir DIR [--purpose TEXT] [--guidance PATH|--clear-guidance] [--mount ID|--clear-mounts] [--skill namespace:name|--clear-skills] [--tool ID|--clear-tools] [--service ID|--clear-services] [--force] [--json]
   my admin roles remove <id> --manifest-dir DIR [--force] [--json]
@@ -190,6 +194,23 @@ func (a app) runAdminTools(args []string) error {
 	}
 }
 
+func (a app) runAdminRepos(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing admin repos subcommand")
+	}
+	switch args[0] {
+	case "add":
+		return a.runAdminReposAdd(args[1:])
+	case "list":
+		return adminOperationalReadError("repos", args[0])
+	case "-h", "--help", "help":
+		a.printAdminUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown admin repos subcommand %q", args[0])
+	}
+}
+
 func (a app) runAdminSkills(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing admin skills subcommand")
@@ -233,6 +254,116 @@ type adminToolResult struct {
 	Tool         manifest.Tool `json:"tool,omitempty"`
 	Message      string        `json:"message,omitempty"`
 	NextCommands []string      `json:"next_commands,omitempty"`
+}
+
+type adminRepoResult struct {
+	Action       string        `json:"action"`
+	ID           string        `json:"id"`
+	CatalogPath  string        `json:"catalog_path"`
+	Repo         manifest.Repo `json:"repo"`
+	Message      string        `json:"message,omitempty"`
+	NextCommands []string      `json:"next_commands,omitempty"`
+}
+
+type adminRepoOpts struct {
+	manifestDir string
+	gitURL      string
+	description string
+	defaultRepo bool
+	force       bool
+	jsonOut     bool
+}
+
+func (a app) runAdminReposAdd(args []string) error {
+	var opts adminRepoOpts
+	fs := newFlagSet("my admin repos add", a.stderr)
+	fs.StringVar(&opts.manifestDir, "manifest-dir", "", "maintainer manifest checkout")
+	fs.StringVar(&opts.gitURL, "git-url", "", "repository Git URL")
+	fs.StringVar(&opts.description, "description", "", "repository description")
+	fs.BoolVar(&opts.defaultRepo, "default", false, "clone this repository during setup")
+	fs.BoolVar(&opts.force, "force", false, "allow dirty checkout or replace an existing declaration")
+	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON result")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"manifest-dir": true,
+		"git-url":      true,
+		"description":  true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: my admin repos add <id> --manifest-dir DIR --git-url URL")
+	}
+	result, err := a.adminReposAdd(rest[0], opts)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	if opts.jsonOut {
+		return printJSON(a.stdout, result)
+	}
+	fmt.Fprintf(a.stdout, "%s\t%s\t%s\n", result.Action, result.ID, result.CatalogPath)
+	if result.Message != "" {
+		fmt.Fprintln(a.stdout, result.Message)
+	}
+	printAdminNextCommands(a.stdout, result.NextCommands)
+	return nil
+}
+
+func (a app) adminReposAdd(id string, opts adminRepoOpts) (adminRepoResult, error) {
+	_, _, root, err := a.loadAuthorizedAdminManifestCheckout(opts.manifestDir)
+	if err != nil {
+		return adminRepoResult{}, err
+	}
+	if err := ensureAdminManifestClean(root, opts.force); err != nil {
+		return adminRepoResult{}, err
+	}
+	id = strings.TrimSpace(id)
+	if !portableKebab(id) {
+		return adminRepoResult{}, fmt.Errorf("repo id %q must be lowercase kebab-case", id)
+	}
+	gitURL := strings.TrimSpace(opts.gitURL)
+	if gitURL == "" {
+		return adminRepoResult{}, fmt.Errorf("--git-url is required")
+	}
+	repos, catalogPath, err := loadAdminRepoCatalog(root)
+	if err != nil {
+		return adminRepoResult{}, err
+	}
+	idx := adminRepoIndex(repos, id)
+	if idx != -1 && !opts.force {
+		return adminRepoResult{}, fmt.Errorf("repo %q already exists; re-run with --force to replace it", id)
+	}
+	repo := manifest.Repo{
+		ID:          id,
+		GitURL:      gitURL,
+		Description: strings.TrimSpace(opts.description),
+		Default:     opts.defaultRepo,
+	}
+	if idx == -1 {
+		repos = append(repos, repo)
+	} else {
+		repos[idx] = repo
+	}
+	if err := validateAdminRepoCatalog(catalogPath, repos); err != nil {
+		return adminRepoResult{}, err
+	}
+	if err := saveAdminRepoCatalog(catalogPath, repos); err != nil {
+		return adminRepoResult{}, err
+	}
+	action := "added"
+	message := "added repository catalog declaration"
+	if idx != -1 {
+		action = "edited"
+		message = "replaced repository catalog declaration"
+	}
+	return adminRepoResult{
+		Action:       action,
+		ID:           id,
+		CatalogPath:  catalogPath,
+		Repo:         repo,
+		Message:      message,
+		NextCommands: adminNextCommands(root),
+	}, nil
 }
 
 type adminToolOpts struct {
@@ -1087,6 +1218,63 @@ func saveAdminProductCatalog(path string, products []manifest.Product) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
+}
+
+func loadAdminRepoCatalog(root string) ([]manifest.Repo, string, error) {
+	path := filepath.Join(root, "catalog", "repos.json")
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, path, nil
+	}
+	if err != nil {
+		return nil, path, err
+	}
+	var repos []manifest.Repo
+	if err := json.Unmarshal(data, &repos); err != nil {
+		return nil, path, fmt.Errorf("read repo catalog %s: %w", path, err)
+	}
+	if err := validateAdminRepoCatalog(path, repos); err != nil {
+		return nil, path, err
+	}
+	return repos, path, nil
+}
+
+func saveAdminRepoCatalog(path string, repos []manifest.Repo) error {
+	data, err := json.MarshalIndent(repos, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+func validateAdminRepoCatalog(path string, repos []manifest.Repo) error {
+	seen := make(map[string]bool, len(repos))
+	for _, repo := range repos {
+		if !portableKebab(repo.ID) {
+			return fmt.Errorf("repo catalog %s: repo id %q must be lowercase kebab-case", path, repo.ID)
+		}
+		if seen[repo.ID] {
+			return fmt.Errorf("repo catalog %s: duplicate repo id %q", path, repo.ID)
+		}
+		seen[repo.ID] = true
+		if strings.TrimSpace(repo.GitURL) == "" {
+			return fmt.Errorf("repo catalog %s: repo %q git_url is required", path, repo.ID)
+		}
+	}
+	return nil
+}
+
+func adminRepoIndex(repos []manifest.Repo, id string) int {
+	for i := range repos {
+		if repos[i].ID == id {
+			return i
+		}
+	}
+	return -1
 }
 
 func productRefsSkill(products []manifest.Product, skillID string) []string {

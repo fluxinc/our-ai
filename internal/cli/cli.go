@@ -250,6 +250,7 @@ Usage:
   my admin meetings add ...                 (alias of my meetings add)
   my admin support add ...                  (alias of my support add)
   my admin tools add|edit|remove ...        (edit manifest tool hints)
+  my admin repos add ...                    (edit repository catalog)
   my admin roles add|edit|remove ...        (edit manifest role loadouts)
   my admin services add|edit|remove ...     (edit manifest service surfaces)
   my admin contract add|remove ...          (edit manifest contract rules)

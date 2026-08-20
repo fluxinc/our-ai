@@ -124,6 +124,9 @@ func TestEveryGovernedManifestAuthoringGroupUsesParsedDirectoryGuardOnce(t *test
 				{"tools", func(t *testing.T) []string {
 					return []string{"my", "admin", "tools", "add", "sample-tool", "--mode", "optional", "--purpose", "Test tool"}
 				}},
+				{"repos", func(t *testing.T) []string {
+					return []string{"my", "admin", "repos", "add", "sample-repo", "--git-url", "https://github.com/example/sample-repo.git"}
+				}},
 				{"roles", func(t *testing.T) []string {
 					return []string{"my", "admin", "roles", "add", "operator", "--purpose", "Test role"}
 				}},
@@ -626,6 +629,98 @@ func TestAdminToolsAddEditRemove(t *testing.T) {
 		}
 		if len(doc.Tools) != 0 {
 			t.Fatalf("tools after remove = %#v", doc.Tools)
+		}
+	})
+}
+
+func TestAdminReposAdd(t *testing.T) {
+	t.Run("creates and replaces a repo catalog entry", func(t *testing.T) {
+		manifestDir := t.TempDir()
+		writeAdminManifest(t, manifestDir, "")
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		if err := a.run([]string{
+			"my", "admin", "repos", "add", "taxes",
+			"--manifest-dir", manifestDir,
+			"--git-url", "git@github.com:mostlydev/taxes.git",
+			"--description", "Private household tax archive",
+			"--default",
+			"--json",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var result adminRepoResult
+		if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.Action != "added" || result.Repo.ID != "taxes" || !result.Repo.Default {
+			t.Fatalf("result = %#v", result)
+		}
+		data, err := os.ReadFile(filepath.Join(manifestDir, "catalog", "repos.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var repos []manifest.Repo
+		if err := json.Unmarshal(data, &repos); err != nil {
+			t.Fatal(err)
+		}
+		if len(repos) != 1 || repos[0].GitURL != "git@github.com:mostlydev/taxes.git" {
+			t.Fatalf("repos = %#v", repos)
+		}
+
+		stdout.Reset()
+		if err := a.run([]string{
+			"my", "admin", "repos", "add", "taxes",
+			"--manifest-dir", manifestDir,
+			"--git-url", "https://github.com/mostlydev/taxes.git",
+			"--force",
+			"--json",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		result = adminRepoResult{}
+		if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.Action != "edited" || result.Repo.GitURL != "https://github.com/mostlydev/taxes.git" || result.Repo.Default {
+			t.Fatalf("replaced result = %#v", result)
+		}
+	})
+
+	t.Run("rejects duplicate without force and missing git url", func(t *testing.T) {
+		manifestDir := t.TempDir()
+		writeAdminManifest(t, manifestDir, "")
+		a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}
+		if err := a.run([]string{
+			"my", "admin", "repos", "add", "taxes",
+			"--manifest-dir", manifestDir,
+			"--git-url", "https://github.com/mostlydev/taxes.git",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		err := a.run([]string{
+			"my", "admin", "repos", "add", "taxes",
+			"--manifest-dir", manifestDir,
+			"--git-url", "https://github.com/mostlydev/taxes.git",
+		})
+		if err == nil || !strings.Contains(err.Error(), "already exists") {
+			t.Fatalf("err = %v, want duplicate blocker", err)
+		}
+		if err := a.run([]string{
+			"my", "admin", "repos", "add", "taxes",
+			"--manifest-dir", manifestDir,
+			"--git-url", "https://github.com/mostlydev/taxes.git",
+			"--force",
+		}); err != nil {
+			t.Fatalf("force replacement failed: %v", err)
+		}
+		err = a.run([]string{
+			"my", "admin", "repos", "add", "missing-url",
+			"--manifest-dir", manifestDir,
+			"--force",
+		})
+		if err == nil || !strings.Contains(err.Error(), "--git-url is required") {
+			t.Fatalf("err = %v, want missing git url", err)
 		}
 	})
 }

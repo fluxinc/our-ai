@@ -103,6 +103,7 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
   product/repo catalog, guidance, skills declarations). They live under
   `my admin ...`
   (`my admin skills add/remove`, `my admin tools add/edit/remove`,
+  `my admin repos add`,
   `my admin roles add/edit/remove`, `my admin services add/edit/remove`,
   `my admin contract add/remove`,
   `my admin policy add/remove`,
