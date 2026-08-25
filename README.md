@@ -678,6 +678,14 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
+- **Active (design) — proxied invocation.** `my ai --role R [--purpose P]
+  <harness>` becomes a launcher: it submits trusted manifest inputs and the
+  human subject to a governed cllama proxy (local sidecar or remote), starts
+  the harness bound only to a short-lived invocation bearer, and revokes it on
+  exit. The manifest gains `members` (the identity-to-role map), `my proxy`
+  manages the sidecar, and harness binding is a tiny explicit adapter (Claude
+  Code and Codex first). Fails closed; never routes around the proxy. Plan:
+  [proxied invocation](docs/plans/2026-08-24-proxied-invocation.md).
 - **Shipped (v0.39.0) — leftover worktree detection and complete first
   run.** `my session leftovers` and doctor now find raw harness-created
   worktrees through Git porcelain across content mounts and retained catalog
