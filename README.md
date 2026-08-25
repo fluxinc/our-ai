@@ -680,7 +680,8 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
-- **Shipped (v0.40.0) — one-command, agent-guided first-machine bootstrap.** A stable
+- **Shipped (v0.40.0; evidence corrected v0.40.1) — one-command,
+  agent-guided first-machine bootstrap.** A stable
   `https://my-cli.com/install.sh` entrypoint installs the release without Go,
   persists the user-local binary path, optionally registers an existing private
   manifest in the same command, and hands fresh interactive installs to an

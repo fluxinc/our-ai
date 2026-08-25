@@ -1,6 +1,8 @@
 # One-command first-run bootstrap
 
-Status: **shipped (v0.40.0)**, 2026-08-25. Jointly implemented and independently reviewed by Codex and Claude over Talking Stick; proven on the `tests/onboarding` cross-arch container matrix.
+Status: **shipped (v0.40.0; evidence corrected in v0.40.1)**, 2026-08-25.
+Jointly implemented and independently reviewed by Codex and Claude over Talking
+Stick; proven on the `tests/onboarding` cross-arch container matrix.
 
 ## Problem
 

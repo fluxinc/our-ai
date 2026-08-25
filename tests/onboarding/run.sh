@@ -9,7 +9,8 @@ PLATFORMS="${MYCLI_ONBOARDING_PLATFORMS:-linux/arm64 linux/amd64}"
 
 mkdir -p "$OUT"
 SUMMARY="$OUT/summary.json"
-printf '{\n  "run_date": "2026-08-21",\n  "results": [\n' >"$SUMMARY"
+RUN_DATE="$(date -u +%F)"
+printf '{\n  "run_date": "%s",\n  "results": [\n' "$RUN_DATE" >"$SUMMARY"
 first_result=1
 
 failed=0

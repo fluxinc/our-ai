@@ -1,5 +1,5 @@
 {
-  "run_date": "2026-08-21",
+  "run_date": "2026-08-25",
   "results": [
     {"scenario":"join","platform":"linux/arm64","status":"pass","events":"join-arm64-events.jsonl"},
     {"scenario":"author","platform":"linux/arm64","status":"pass","events":"author-arm64-events.jsonl"},

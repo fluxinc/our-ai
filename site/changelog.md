@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.40.1 - 2026-08-25
+
+### Fixed
+
+- The retained onboarding matrix summary now records the actual UTC run date,
+  and the release plan correctly reports all 20 arm64/amd64 scenario runs.
+
 ## 0.40.0 - 2026-08-25
 
 ### Added
