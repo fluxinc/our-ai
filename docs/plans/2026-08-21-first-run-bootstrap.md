@@ -1,7 +1,6 @@
 # One-command first-run bootstrap
 
-Status: active; implemented in the working-tree candidate, pending independent
-review and release.
+Status: **shipped (v0.40.0)**, 2026-08-25. Jointly implemented and independently reviewed by Codex and Claude over Talking Stick; proven on the `tests/onboarding` cross-arch container matrix.
 
 ## Problem
 
