@@ -42,10 +42,8 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
   harnesses can be pointed at a gateway, but neither vendor documents that a
   gateway may hold and replay those tokens upstream. v1 guarantees API and
   custom-provider mediation only. `my proxy login <harness>` is reserved for a
-  vendor-supported contract; cllama keeps a credential plugin seam (kind +
-  harness binding + subject binding) and an operator-run live spike exists to
-  test the Claude path against the operator's own account without making it a
-  delivery gate.
+  future vendor-supported contract and is not implemented or experimentally
+  exercised by this plan.
 - **S7 — the same launch against a central or on-prem proxy.** `proxy.mode:
   remote` with an HTTPS URL; laptops hold no provider credentials; the remote
   deployment's own human authenticator and server-side `mayAssume(subject,
@@ -56,9 +54,10 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
 ## Decisions
 
 1. **`my` submits trusted inputs; cllama compiles the effective context.** The
-   invocation request (cllama public v1 wire format, JSON, stdlib-only client
-   published by cllama and vendored as a conformance fixture — no Go module
-   dependency) carries: stable subject `{kind: person, id: github:<immutable
+   invocation request uses cllama's public v1 JSON format. `my` keeps a tiny
+   stdlib HTTP client and pins cllama's JSON conformance fixtures; it does not
+   import a Go module or duplicate final projection logic. The request carries:
+   stable subject `{kind: person, id: github:<immutable
    id>}`; role; purpose; expiry; ordered **input modules by kind** — organization
    contract (baseline fleet-work contract + manifest `contract`), role guidance
    fragments, policies index, data-binding domain notes, session startup
@@ -66,9 +65,10 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
    skills); tool specs from manifest `services` of kind `mcp` and `http`
    (`auth_ref` references only, never secrets); the single memory service
    reference (kind `memory`); model policy and budget from the role. `my`
-   never assembles the system prompt. `internal/launchplan` is renamed
-   `internal/projection`; `my compile` becomes `my projection [--role R]
-   [--json]` (alias kept one release).
+   never assembles the system prompt. Existing `internal/launchplan` and
+   `my compile` remain the organization/control-plane compiler. A new
+   `internal/invocationrequest` maps the selected launch plan into cllama's
+   trusted input types; it is not called a projection.
 2. **Issuer credential, not PKI.** Sidecar mode: `my proxy ensure` starts a
    pinned cllama with a freshly minted control credential held by the `my`
    process and stored at `~/.local/state/my-cli/proxy/<manifest>/control.token`
@@ -86,9 +86,11 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
    `openai-responses`); capability declaration and version probe; cleanup and
    revoke. Claude Code: `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, with
    `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` cleared. Codex: temporary
-   `CODEX_HOME` with a `model_providers.<cllama>` profile (`base_url`,
-   `env_key`, Responses wire API) selected with `-c`. Guaranteed matrix:
-   Claude Code and Codex. OpenCode, Antigravity, Grok and Cursor are reported
+   `CODEX_HOME` whose config selects a `model_providers.<cllama>` profile with
+   `base_url`, an `env_key` naming a launch-only bearer variable, and Responses
+   wire API. The temporary home prevents fallback to the person's normal
+   login; direct-provider variables are cleared. Guaranteed matrix: Claude
+   Code and Codex. OpenCode, Antigravity, Grok and Cursor are reported
    **unsupported** when a proxy is configured until their adapter is proven;
    `my` never routes around cllama.
 5. **Launch sequence and revoke-on-exit.** After `launchTarget` and the
@@ -125,7 +127,7 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
 2. **Sidecar management.** `my proxy ensure|status|stop`; pinned cllama
    download with checksum verification (reuse `internal/selfupdate`); control
    credential; `auth_ref` resolution into process env.
-3. **Projection and launch.** `internal/projection`, harness adapters
+3. **Invocation request and launch.** `internal/invocationrequest`, harness adapters
    (Claude Code, Codex), launch sequence, revoke-on-exit, fail-closed, doctor
    rows. Ships S1.
 4. **Deferred slice — person-bound subscription credentials.** Reserved; not
@@ -136,18 +138,23 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
 ## Spike tests (delivery gates; hermetic first, live as extra evidence)
 
 - `TestSpikeLaptopInvocation` (`internal/e2e`, tag `spike`, credential-free):
-  builds `my`; real cllama binary from `CLLAMA_BIN` (skips when unset) with an
+  builds `my`; uses the required `CLLAMA_BIN` built from the pinned release in
+  CI with an
   httptest upstream; temp HOME with the acme manifest carrying `members`; fake
   `claude` and `codex` binaries that capture environment and config and issue
   one real protocol request each through the proxy. Asserts every S1
   acceptance item, including unmapped-role refusal, unsupported-harness
-  refusal, and revoke on normal exit, non-zero exit and SIGTERM.
-- `TestSpikeLaptopInvocationLive` (skips without `ANTHROPIC_API_KEY`): real
-  `claude -p` and `codex exec` through the sidecar in API-key mode.
-- `TestSpikeSubscriptionCredentialOperatorOnly` (skips without
-  `CLAUDE_CODE_OAUTH_TOKEN`; not a delivery gate): probes whether the
-  operator's own setup-token can be replayed by the sidecar; documents the
-  result for the deferred slice.
+  refusal, and revoke on normal exit, non-zero exit and SIGTERM. A missing
+  `CLLAMA_BIN` fails the CI spike target rather than skipping it.
+- `TestSpikePinnedHarnessCompatibility` (credential-free delivery gate):
+  installs pinned supported versions of the real Claude Code and Codex CLIs,
+  runs `claude -p` and `codex exec` through a real cllama with fake Anthropic
+  Messages and OpenAI Responses providers, and asserts request shape, streaming
+  response handling, one managed-tool loop, launch-config isolation, and exit
+  cleanup. This proves the actual harness adapters without provider spend.
+- `TestSpikeLaptopInvocationLive` (extra release evidence; skips without
+  provider credentials): real `claude -p` and `codex exec` through the sidecar
+  to supported provider APIs.
 - `TestSpikeOrgProxy` (credential-free): cllama behind a TLS test proxy with a
   mock authenticator, a mock OpenAI-compatible "on-prem" provider, `my` in
   remote mode; proves fail-closed and on-prem routing.
@@ -155,5 +162,7 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
 ## Sequencing
 
 Blocked on a tagged cllama release shipping the v1 invocation types and
-client, the control API with read endpoints, the credential plugin seam, `mayAssume`, and the conformance fixture. Slices 1–2 land before that tag; 3–6 after. The README roadmap and
-`docs/plans/README.md` are updated with each slice.
+client, the control API with read endpoints, `mayAssume`, and the conformance
+fixture. Slices 1–2 land before that tag; 3–6
+after. Both credential-free spikes are required CI checks. The README roadmap
+and `docs/plans/README.md` are updated with each slice.
