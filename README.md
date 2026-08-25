@@ -681,7 +681,7 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
-- **Release candidate — open-issue simplicity sweep.** The current candidate
+- **Shipped (v0.41.0) — open-issue simplicity sweep.** This release
   adds push/PR CI, refreshes manifest-derived reads before serving them,
   handles deliberately local Gnit control roots without blocking member
   publication, makes session/base conflict checks path-aware, documents the

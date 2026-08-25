@@ -1,6 +1,6 @@
 # Open-issue simplicity sweep
 
-Status: release candidate (2026-08-25)
+Status: shipped in v0.41.0 (2026-08-25)
 
 This sweep re-evaluated every issue open on 2026-08-25 against current master.
 The governing constraint is operational simplicity: fix current defects and
