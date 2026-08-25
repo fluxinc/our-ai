@@ -45,9 +45,11 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
   future vendor-supported contract and is not implemented or experimentally
   exercised by this plan.
 - **S7 — the same launch against a central or on-prem proxy.** `proxy.mode:
-  remote` with an HTTPS URL; laptops hold no provider credentials; the remote
-  deployment's own human authenticator and server-side `mayAssume(subject,
-  role)` decide roles; proxy unavailability, failed role authorization, or an
+  remote` with an HTTPS URL and `auth_ref` for a revocable per-person issuer
+  token; laptops hold no provider credentials; cllama binds that token to the
+  immutable person subject and applies server-side `mayAssume(subject, role)`.
+  A deployment may replace the token authenticator through cllama's interface.
+  Proxy unavailability, revoked issuer, failed role authorization, or an
   unsupported harness adapter fails closed with remediation and never falls
   back to a direct provider.
 
@@ -72,8 +74,11 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
 2. **Issuer credential, not PKI.** Sidecar mode: `my proxy ensure` starts a
    pinned cllama with a freshly minted control credential held by the `my`
    process and stored at `~/.local/state/my-cli/proxy/<manifest>/control.token`
-   (0600). Remote mode: the deployment authenticates the human (its configured
-   authenticator); `my` carries that identity and never self-asserts a role.
+   (0600). Remote v1 mode: `proxy.auth_ref` resolves a per-person issuer token
+   from the OS keychain or 1Password for the control request only. cllama maps
+   it to the subject; `my` never sends a caller-selected subject, puts the token
+   in a manifest, or exposes it to the harness. Other central authenticators
+   can replace this through cllama's authorizer interface.
 3. **The manifest gains the identity-to-role map.** `members: [{subject:
    "github:<immutable-id>", roles: [...]}]`; `roles[]` gains `models`, `budget`,
    `labels`, `purpose_default`. `my admin members add|remove` uses the governed
@@ -155,9 +160,11 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
 - `TestSpikeLaptopInvocationLive` (extra release evidence; skips without
   provider credentials): real `claude -p` and `codex exec` through the sidecar
   to supported provider APIs.
-- `TestSpikeOrgProxy` (credential-free): cllama behind a TLS test proxy with a
-  mock authenticator, a mock OpenAI-compatible "on-prem" provider, `my` in
-  remote mode; proves fail-closed and on-prem routing.
+- `TestSpikeOrgProxy` (credential-free): cllama behind a TLS test proxy with
+  two real scoped issuer-token records and a mock OpenAI-compatible "on-prem"
+  provider, `my` in remote mode; proves immutable subject binding, allowed role,
+  cross-subject/cross-role denial, issuer revocation, no issuer token in the
+  harness, fail-closed behavior, and on-prem routing.
 
 ## Sequencing
 
