@@ -707,3 +707,33 @@ func configGitUser(t *testing.T, dir string) {
 	runGit(t, dir, "config", "user.email", "test@example.com")
 	runGit(t, dir, "config", "user.name", "Test")
 }
+
+func TestLandHoldsBaseIntentToAddFilesBeforeMerging(t *testing.T) {
+	root, repo := setupUmbrellaWithMount(t, "handbook")
+	session, err := Start(StartOptions{
+		Root: root,
+		Now:  time.Date(2026, 8, 25, 1, 2, 3, 0, time.UTC),
+		Rand: bytes.NewReader([]byte{0xab, 0x31}),
+		Mounts: []MountSpec{{
+			ID: "handbook", Kind: "handbook", RepoPath: repo,
+			ContentPaths: []string{"meetings", "support"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Record commands leave unrelated base files intent-to-add; git merge
+	// refuses on those even though the paths are disjoint.
+	writeFile(t, filepath.Join(repo, "support", "record.md"), "record\n")
+	runGit(t, repo, "add", "-N", "support/record.md")
+	writeFile(t, filepath.Join(session.Mounts[0].WorktreePath, "meetings", "session.md"), "session\n")
+	runGit(t, session.Mounts[0].WorktreePath, "add", "-N", "meetings/session.md")
+
+	_, err = Land(LandOptions{Root: root, ID: session.ID, Message: "Land session"})
+	if err == nil || !strings.Contains(err.Error(), "intent-to-add") || !strings.Contains(err.Error(), "support/record.md") {
+		t.Fatalf("Land error = %v, want intent-to-add hold naming support/record.md", err)
+	}
+	if got := runGit(t, repo, "log", "--oneline"); strings.Contains(got, "Land session") {
+		t.Fatalf("base received a merge despite the hold: %q", got)
+	}
+}

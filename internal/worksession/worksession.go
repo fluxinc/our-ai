@@ -1052,8 +1052,25 @@ func requireBaseReady(runner Runner, mount Mount, sessionPaths []string) error {
 		if overlaps := intersectingPaths(basePaths, sessionPaths); len(overlaps) != 0 {
 			return fmt.Errorf("mount %s base checkout has changes that overlap the session: %s", mount.ID, strings.Join(overlaps, ", "))
 		}
+		// git merge refuses outright ("Entry ... not uptodate. Cannot merge.")
+		// while the index holds intent-to-add entries, even for unrelated
+		// paths, so surface that before attempting the merge (#30).
+		if pending := intentToAddPaths(dirty); len(pending) != 0 {
+			return fmt.Errorf("mount %s base checkout has intent-to-add files that git merge refuses: %s; stage and commit them (git -C %s add -- <paths>) or unmark them (git -C %s reset -- <paths>) first", mount.ID, strings.Join(pending, ", "), mount.RepoPath, mount.RepoPath)
+		}
 	}
 	return nil
+}
+
+// intentToAddPaths returns files registered with git add -N (porcelain " A").
+func intentToAddPaths(files []dirtyFile) []string {
+	var paths []string
+	for _, file := range files {
+		if len(file.status) >= 2 && file.status[0] == ' ' && file.status[1] == 'A' {
+			paths = append(paths, file.path)
+		}
+	}
+	return unique(paths)
 }
 
 func intersectingPaths(left, right []string) []string {

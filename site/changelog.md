@@ -29,7 +29,9 @@
   fresh conversation (#24).
 - Session publish and land guards now compare exact changed paths. Unrelated
   base and session records no longer block one another; overlapping work and
-  any path-inspection failure remain held (#30).
+  any path-inspection failure remain held. Base intent-to-add entries (which
+  `git merge` refuses even when unrelated) are named before the merge is
+  attempted, with the exact `git add`/`git reset` remediation (#30).
 
 ## 0.40.1 - 2026-08-25
 
