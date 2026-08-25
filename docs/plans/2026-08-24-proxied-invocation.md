@@ -156,8 +156,9 @@ invocation, starts the harness bound to it, and revokes it on exit.
    does not infer session identity from purpose text. A configured proxy that is
    unreachable is `proxy_unreachable` with remediation `my proxy ensure`.
    `my ai --flux-task <id>` is an explicit human action after the task appears
-   in Flux My work; `my` is not a wake daemon. `my proxy revoke --role <role>
-   --auth-ref <admin-ref> [--bundle-digest <digest>]` uses the admin credential
+   in Flux My work; `my` is not a wake daemon. `my proxy revoke
+   --auth-ref <admin-ref> [--role <role>] [--subject <id>]
+   [--bundle-digest <digest>]` requires at least one filter and uses the admin credential
    to list redacted live Invocations, resolves the matching role-entry digests,
    and invokes cllama's digest-filtered admin bulk-revoke operation for an
    urgent published change. The ordinary launcher credential never reaches an
@@ -316,7 +317,8 @@ invocation, starts the harness bound to it, and revokes it on exit.
   list/get is limited to its organization and member namespace; only admin can
   inspect across them. A controller can enable only its bundle-declared
   authenticated `pod-members` route, and an arbitrary URL is rejected before
-  fetch.
+  fetch. Admin subject-filtered revoke affects exactly that person's live
+  Invocations.
 - `TestSpikeRoleOnboarding` (credential-free, cross-repository): pins the
   canonical cllama conformance billing fixture and publishes its role with
   organization/role contract revisions, an ordered composite
@@ -338,6 +340,6 @@ client, the control API with read endpoints, `mayAssume`, and the conformance
 fixture. Slices 1–2 land before that tag; 3–7
 after. `TestSpikeLaptopInvocation`, `TestSpikeOrgProxy`, and the
 cross-repository role-onboarding spike are required PR and
-release checks; all three credential-free spikes are required by the release
+release checks; all four credential-free spikes are required by the release
 workflow. The README roadmap and `docs/plans/README.md` are updated with each
 slice.
