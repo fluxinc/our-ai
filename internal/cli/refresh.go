@@ -126,14 +126,18 @@ func (a app) maybeAutoRefresh(home, manifestName, umbrellaRoot, root string, noR
 }
 
 // maybeAutoRefreshReads gives manifest-derived read verbs (contract, roles,
-// services, tools) the same TTL-bounded auto-refresh as launches, so a merged
-// manifest change is not silently served from a stale cache (#33). Reads
-// outside any umbrella are left alone.
+// services, tools, policies) the same TTL-bounded auto-refresh as launches, so
+// a merged manifest change is not silently served from a stale cache (#33).
+// Reads outside any umbrella are left alone.
 func (a app) maybeAutoRefreshReads(home, manifestName string, noRefresh bool) {
+	a.maybeAutoRefreshReadsAt(home, manifestName, "", noRefresh)
+}
+
+func (a app) maybeAutoRefreshReadsAt(home, manifestName, umbrellaRoot string, noRefresh bool) {
 	if noRefresh {
 		return
 	}
-	root, ok, err := existingUmbrellaRoot(home, manifestName, "")
+	root, ok, err := existingUmbrellaRoot(home, manifestName, umbrellaRoot)
 	if err != nil || !ok {
 		return
 	}

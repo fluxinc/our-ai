@@ -7,6 +7,7 @@ records, and each record domain exposes write-oriented commands. `my sync
 
 ```sh
 my customers list [--json]
+my customers list --identity --json
 my customers add <domain|slug> [--name TEXT] [--domain DOMAIN] [--domain-confirmed] [--alias TEXT] [--partner ID]
 
 my meetings list [--since DATE] [--customer ID] [--partner ID] [--json]
@@ -57,6 +58,15 @@ partners:
 
 `my customers list` reads these records, and customer filters accept IDs,
 domains, names, and aliases.
+
+`my customers list --identity --json > customer-identities.json` generates a
+deterministic, least-privilege artifact for detached repository CI. The artifact
+contains only canonical IDs, domains, aliases, and source revision/freshness
+metadata; it omits names, partner links, note bodies, and local paths. Generate
+it where the customer mount is available, then provide only the JSON artifact
+to the detached job. Generation fails distinctly when the source is
+unavailable, dirty, or out of sync, so CI can distinguish an empty identity set
+from an untrustworthy projection.
 
 ## Meetings
 
@@ -116,3 +126,7 @@ When your current directory is inside an active session (`sessions/<id>`),
 record commands write to that session's mount worktree instead of the base
 mount — session work does not leak until you finish the session. See
 [Sessions](./sessions.md).
+
+Pending session work only holds a base publish or land when the changed file
+paths overlap. Unrelated base and session records can proceed independently;
+if Git cannot prove the path sets, My AI keeps the existing fail-closed hold.

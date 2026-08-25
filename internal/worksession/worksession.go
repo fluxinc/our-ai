@@ -106,9 +106,11 @@ type GuidanceContext struct {
 // MountStatus is one mount's live git state inside a session.
 type MountStatus struct {
 	Mount
-	Dirty    []string `json:"dirty"`
-	Unlanded int      `json:"unlanded"`
-	Error    string   `json:"error,omitempty"`
+	Dirty        []string `json:"dirty"`
+	Unlanded     int      `json:"unlanded"`
+	PendingPaths []string `json:"pending_paths,omitempty"`
+	PathsKnown   bool     `json:"paths_known"`
+	Error        string   `json:"error,omitempty"`
 }
 
 // MigrationReport describes legacy work/ -> sessions/ migration work.
@@ -849,13 +851,23 @@ func Inspect(session Session, runner Runner) (SessionStatus, error) {
 	status := SessionStatus{Session: session}
 	for _, m := range session.Mounts {
 		ms := MountStatus{Mount: m}
-		if dirty, err := gitTrim(runner, m.WorktreePath, "status", "--porcelain=v1", "--untracked-files=all"); err != nil {
+		dirty, err := dirtyFiles(runner, m.WorktreePath)
+		if err != nil {
 			ms.Error = err.Error()
-		} else if dirty != "" {
-			ms.Dirty = strings.Split(dirty, "\n")
+		} else {
+			ms.Dirty = dirtyStatusLines(dirty)
 		}
 		if ms.Error == "" {
 			ms.Unlanded, ms.Error = unlandedCount(runner, m)
+		}
+		if ms.Error == "" {
+			changed, changedErr := changedFiles(runner, m)
+			if changedErr != nil {
+				ms.Error = changedErr.Error()
+			} else {
+				ms.PendingPaths = unique(append(dirtyFilePaths(dirty), changed...))
+				ms.PathsKnown = true
+			}
 		}
 		status.Mounts = append(status.Mounts, ms)
 	}
@@ -1001,9 +1013,6 @@ func planLandMount(runner Runner, mount Mount) (landPlan, error) {
 	if len(plan.contentPaths) == 0 {
 		return plan, fmt.Errorf("mount %s has no declared content paths", mount.ID)
 	}
-	if err := requireBaseReady(runner, mount); err != nil {
-		return plan, err
-	}
 	dirty, err := dirtyFiles(runner, mount.WorktreePath)
 	if err != nil {
 		return plan, fmt.Errorf("inspect %s dirty files: %w", mount.ID, err)
@@ -1020,10 +1029,13 @@ func planLandMount(runner Runner, mount Mount) (landPlan, error) {
 	if !pathsWithin(changed, plan.contentPaths) {
 		return plan, fmt.Errorf("mount %s has committed changes outside declared content paths: %s", mount.ID, strings.Join(pathsOutside(changed, plan.contentPaths), ", "))
 	}
+	if err := requireBaseReady(runner, mount, unique(append(dirtyFilePaths(dirty), changed...))); err != nil {
+		return plan, err
+	}
 	return plan, nil
 }
 
-func requireBaseReady(runner Runner, mount Mount) error {
+func requireBaseReady(runner Runner, mount Mount, sessionPaths []string) error {
 	branch, err := gitTrim(runner, mount.RepoPath, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return fmt.Errorf("inspect %s base branch: %w", mount.ID, err)
@@ -1036,9 +1048,27 @@ func requireBaseReady(runner Runner, mount Mount) error {
 		return fmt.Errorf("inspect %s base checkout: %w", mount.ID, err)
 	}
 	if len(dirty) != 0 {
-		return fmt.Errorf("mount %s base checkout is dirty: %s", mount.ID, strings.Join(dirtyFilePaths(dirty), ", "))
+		basePaths := dirtyFilePaths(dirty)
+		if overlaps := intersectingPaths(basePaths, sessionPaths); len(overlaps) != 0 {
+			return fmt.Errorf("mount %s base checkout has changes that overlap the session: %s", mount.ID, strings.Join(overlaps, ", "))
+		}
 	}
 	return nil
+}
+
+func intersectingPaths(left, right []string) []string {
+	seen := make(map[string]bool, len(left))
+	for _, path := range left {
+		seen[filepath.ToSlash(strings.TrimPrefix(path, "./"))] = true
+	}
+	var overlaps []string
+	for _, path := range right {
+		path = filepath.ToSlash(strings.TrimPrefix(path, "./"))
+		if seen[path] {
+			overlaps = append(overlaps, path)
+		}
+	}
+	return unique(overlaps)
 }
 
 func validateDirtyFiles(mount Mount, contentPaths []string, dirty []dirtyFile) error {
@@ -1113,7 +1143,7 @@ func changedFiles(runner Runner, mount Mount) ([]string, error) {
 	if base == "" {
 		base = mount.BaseBranch
 	}
-	out, err := gitOutput(runner, mount.RepoPath, "diff", "--name-only", base+".."+mount.Branch)
+	out, err := gitOutput(runner, mount.RepoPath, "diff", "--name-only", "--no-renames", base+".."+mount.Branch)
 	if err != nil {
 		return nil, fmt.Errorf("%s", commandMessage(out, err))
 	}
@@ -1140,6 +1170,13 @@ func parseStatusFiles(text string) []dirtyFile {
 		}
 		if status[0] == 'R' || status[0] == 'C' || status[1] == 'R' || status[1] == 'C' {
 			i++
+			if i < len(parts) && (status[0] == 'R' || status[1] == 'R') {
+				oldPath := filepath.ToSlash(parts[i])
+				if oldPath != "" && !seen[oldPath] {
+					files = append(files, dirtyFile{status: status, path: oldPath})
+					seen[oldPath] = true
+				}
+			}
 		}
 	}
 	return files
@@ -1151,6 +1188,14 @@ func dirtyFilePaths(files []dirtyFile) []string {
 		paths = append(paths, file.path)
 	}
 	return unique(paths)
+}
+
+func dirtyStatusLines(files []dirtyFile) []string {
+	lines := make([]string, 0, len(files))
+	for _, file := range files {
+		lines = append(lines, file.status+" "+file.path)
+	}
+	return lines
 }
 
 func nonemptyLines(text string) []string {

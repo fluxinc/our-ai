@@ -310,6 +310,7 @@ my support add     <slug> [--date DATE] [--title TEXT] [--customer ID] [--identi
                      # for others involved; never set --approved-by without explicit
                      # operator approval — it is the human sign-off field
 my customers list  [--json]      # mounted customer IDs, aliases, partners
+my customers list --identity --json # portable ID/domain/alias projection; fails on stale or dirty source
 my customers add   <domain|slug> [--name TEXT] [--domain DOMAIN] [--domain-confirmed] [--alias TEXT] [--partner ID] [--print] [--json]
 ```
 

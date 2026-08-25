@@ -132,6 +132,92 @@ func TestCustomersAddHelpShowsRequiredOperand(t *testing.T) {
 	}
 }
 
+func TestCustomersIdentityProjectionIsLeastPrivilegeAndProvenanced(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	writeCLITestFile(t, filepath.Join(workspaceRoot, "customers", "sampleco.example.com.md"), `---
+id: sampleco.example.com
+name: SampleCo Private Display Name
+domain: sampleco.example.com
+domain_confirmed: true
+aliases:
+  - sampleco
+  - sc
+partners:
+  - private-integrator
+---
+
+# Private customer notes
+`)
+	runCLIGit(t, workspaceRoot, "add", "customers/sampleco.example.com.md")
+	runCLIGit(t, workspaceRoot, "commit", "-q", "-m", "Add customer identity")
+	wantRevision := strings.TrimSpace(gitCLIOutput(t, workspaceRoot, "rev-parse", "HEAD"))
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "customers", "list", "--identity", "--json", "--home", home}); err != nil {
+		t.Fatalf("identity projection: %v\nstderr: %s", err, stderr.String())
+	}
+	var projection customerIdentityProjection
+	if err := json.Unmarshal(stdout.Bytes(), &projection); err != nil {
+		t.Fatalf("projection JSON: %v\n%s", err, stdout.String())
+	}
+	if projection.SchemaVersion != 1 || len(projection.Sources) != 1 || projection.Sources[0].Revision != wantRevision || projection.Sources[0].Freshness != "local" {
+		t.Fatalf("projection provenance = %#v", projection.Sources)
+	}
+	if len(projection.Customers) != 1 || projection.Customers[0].ID != "sampleco.example.com" || strings.Join(projection.Customers[0].Aliases, ",") != "sampleco,sc" {
+		t.Fatalf("projection identities = %#v", projection.Customers)
+	}
+	for _, forbidden := range []string{"Private Display Name", "private-integrator", "Private customer notes", workspaceRoot} {
+		if strings.Contains(stdout.String(), forbidden) {
+			t.Fatalf("projection leaked %q: %s", forbidden, stdout.String())
+		}
+	}
+}
+
+func TestCustomersIdentityProjectionRejectsUncommittedIdentitySource(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	writeCLITestFile(t, filepath.Join(workspaceRoot, "customers", "draft.example.com.md"), "---\nid: draft.example.com\n---\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{"my", "customers", "list", "--identity", "--json", "--home", home})
+	if err == nil {
+		t.Fatalf("dirty projection unexpectedly succeeded: %s", stdout.String())
+	}
+	var payload commandErrorPayload
+	if jsonErr := json.Unmarshal(stdout.Bytes(), &payload); jsonErr != nil {
+		t.Fatalf("error JSON: %v\n%s", jsonErr, stdout.String())
+	}
+	if payload.Error != "customer_identity_source_dirty" || !strings.Contains(payload.Message, "uncommitted customer records") {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
+func TestCustomersIdentityProjectionRejectsUnpublishedSourceRevision(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	remote := filepath.Join(home, "customer-identities.git")
+	runCLIGit(t, home, "init", "--bare", "-q", remote)
+	runCLIGit(t, workspaceRoot, "remote", "add", "origin", remote)
+	runCLIGit(t, workspaceRoot, "push", "-q", "-u", "origin", "HEAD")
+	writeCLITestFile(t, filepath.Join(workspaceRoot, "customers", "ahead.example.com.md"), "---\nid: ahead.example.com\n---\n")
+	runCLIGit(t, workspaceRoot, "add", "customers/ahead.example.com.md")
+	runCLIGit(t, workspaceRoot, "commit", "-q", "-m", "Add unpublished customer identity")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{"my", "customers", "list", "--identity", "--json", "--home", home})
+	if err == nil {
+		t.Fatalf("ahead projection unexpectedly succeeded: %s", stdout.String())
+	}
+	var payload commandErrorPayload
+	if jsonErr := json.Unmarshal(stdout.Bytes(), &payload); jsonErr != nil {
+		t.Fatalf("error JSON: %v\n%s", jsonErr, stdout.String())
+	}
+	if payload.Error != "customer_identity_source_stale" || !strings.Contains(payload.Message, "ahead 1, behind 0") {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
 func TestUnknownCustomerWarningSuggestsCustomersAdd(t *testing.T) {
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	writeCLITestFile(t, filepath.Join(workspaceRoot, "customers", "sampleco.example.com.md"), `---

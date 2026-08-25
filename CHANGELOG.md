@@ -6,14 +6,18 @@
 
 - A `ci` GitHub Actions workflow runs `gofmt`, `go vet`, `go build`, and
   `go test ./...` on every push to `master` and every pull request (#17).
+- `my customers list --identity --json` emits a deterministic portable
+  customer identity projection with source revision/freshness metadata while
+  excluding names, partner links, note bodies, and local paths. Dirty, stale,
+  or unavailable sources fail with distinct error codes (#36).
 
 ### Changed
 
 - Manifest-derived read verbs (`my contract list`, `my roles list|get`,
-  `my services list|get`, `my tools list|info`) now share the same TTL-bounded
+  `my services list|get`, `my tools list|info`, `my policy list|show|status`)
+  now share the same TTL-bounded
   auto-refresh as launches, so a merged manifest change is no longer served
-  silently from a stale cache. Each accepts `--no-refresh`; JSON output is
-  unchanged (#33).
+  silently from a stale cache. Existing JSON result shapes are unchanged (#33).
 - A Gnit control-mode umbrella root with no origin remote (and no roster
   remote) is treated as a deliberately local root: `my doctor` reports it as
   `info` instead of a permanent warning, and `my sync --push` publishes member
@@ -23,6 +27,9 @@
 - Session docs and `my session resume` usage now state that a work session is
   a persistent workspace, not a harness chat, and that resuming it starts a
   fresh conversation (#24).
+- Session publish and land guards now compare exact changed paths. Unrelated
+  base and session records no longer block one another; overlapping work and
+  any path-inspection failure remain held (#30).
 
 ## 0.40.1 - 2026-08-25
 

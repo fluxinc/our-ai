@@ -134,3 +134,49 @@ func TestRunSessionHoldOnOtherRepoDoesNotHold(t *testing.T) {
 		t.Fatalf("result = %#v, want pushed (unrelated session hold)", result)
 	}
 }
+
+func TestRunSessionHoldAllowsPublishWhenPendingPathsAreDisjoint(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	writeFile(t, filepath.Join(content, "meetings", "base-note.md"), "base\n")
+	adoptFile(t, content, "meetings/base-note.md")
+
+	report := Run([]Entry{
+		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings", "support"}},
+	}, Options{
+		Publish:    "auto",
+		Message:    "Add base note",
+		Visibility: privateVisibility,
+		SessionHolds: []SessionHold{{
+			SessionID: "2026-08-25-support-ab12", MountID: "handbook", RepoPath: content,
+			DirtyCount: 1, PendingPaths: []string{"support/session-note.md"}, PathsKnown: true,
+		}},
+	})
+
+	result := findResult(t, report, "handbook")
+	if result.Status != "pushed" {
+		t.Fatalf("result = %#v, want disjoint base work published", result)
+	}
+}
+
+func TestRunSessionHoldStillBlocksPublishWhenPendingPathsOverlap(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	writeFile(t, filepath.Join(content, "meetings", "shared.md"), "base\n")
+	adoptFile(t, content, "meetings/shared.md")
+
+	report := Run([]Entry{
+		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+	}, Options{
+		Publish:    "auto",
+		Message:    "Update shared note",
+		Visibility: privateVisibility,
+		SessionHolds: []SessionHold{{
+			SessionID: "2026-08-25-shared-ab12", MountID: "handbook", RepoPath: content,
+			DirtyCount: 1, PendingPaths: []string{"meetings/shared.md"}, PathsKnown: true,
+		}},
+	})
+
+	result := findResult(t, report, "handbook")
+	if result.Status != "held back" || result.ReasonCode != "active_session" {
+		t.Fatalf("result = %#v, want overlapping work held", result)
+	}
+}

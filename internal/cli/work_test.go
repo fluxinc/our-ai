@@ -1142,7 +1142,7 @@ func TestSyncHoldsContentMountWithActiveSession(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
 		t.Fatal(err)
 	}
-	writeCLITestFile(t, filepath.Join(session.Mounts[0].WorktreePath, "meetings", "wip.md"), "wip\n")
+	writeCLITestFile(t, filepath.Join(session.Mounts[0].WorktreePath, "meetings", "base-note.md"), "session\n")
 	writeCLITestFile(t, filepath.Join(workspaceRoot, "meetings", "base-note.md"), "base\n")
 	runCLIGit(t, workspaceRoot, "add", "-N", "meetings/base-note.md")
 
@@ -1233,7 +1233,7 @@ func TestWorkFinishPublishHeldByOtherActiveSession(t *testing.T) {
 	}
 	writeCLITestFile(t, filepath.Join(finishing.Mounts[0].WorktreePath, "meetings", "done.md"), "done\n")
 	runCLIGit(t, finishing.Mounts[0].WorktreePath, "add", "-N", "meetings/done.md")
-	writeCLITestFile(t, filepath.Join(other.Mounts[0].WorktreePath, "meetings", "wip.md"), "wip\n")
+	writeCLITestFile(t, filepath.Join(other.Mounts[0].WorktreePath, "meetings", "done.md"), "other session\n")
 
 	stdout.Reset()
 	stderr.Reset()

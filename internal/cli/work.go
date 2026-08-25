@@ -1092,6 +1092,8 @@ func collectSessionHolds(root string) ([]syncer.SessionHold, error) {
 				RepoPath:      mount.RepoPath,
 				DirtyCount:    len(mount.Dirty),
 				UnlandedCount: mount.Unlanded,
+				PendingPaths:  append([]string(nil), mount.PendingPaths...),
+				PathsKnown:    mount.PathsKnown,
 			}
 			holds = append(holds, hold)
 		}

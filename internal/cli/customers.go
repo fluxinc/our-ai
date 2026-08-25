@@ -58,7 +58,7 @@ func (a app) runCustomers(args []string) error {
 
 func (a app) printCustomersUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  my customers list [--manifest NAME] [--workspace ID] [--home DIR] [--umbrella DIR] [--json]
+  my customers list [--manifest NAME] [--workspace ID] [--home DIR] [--umbrella DIR] [--json] [--identity]
   my customers add <domain|slug> [--manifest NAME] [--workspace ID] [--home DIR] [--umbrella DIR] [--name TEXT] [--domain DOMAIN] [--domain-confirmed] [--alias TEXT] [--partner ID] [--print] [--json]
 
 Customer commands use local markdown files under workspace customers/ directories.`)
@@ -66,14 +66,19 @@ Customer commands use local markdown files under workspace customers/ directorie
 
 func (a app) runCustomersList(args []string) error {
 	var opts meetingCommonOpts
+	var identity bool
 	fs := newFlagSet("my customers list", a.stderr)
 	bindMeetingCommonFlags(fs, &opts)
+	fs.BoolVar(&identity, "identity", false, "print a least-privilege portable identity projection (requires --json)")
 	rest, err := parseInterspersed(fs, args, meetingValueFlags())
 	if err != nil {
 		return err
 	}
 	if len(rest) != 0 {
 		return fmt.Errorf("customers list does not accept positional arguments")
+	}
+	if identity && !opts.jsonOut {
+		return fmt.Errorf("--identity requires --json")
 	}
 	roots, err := customerRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
 	if err != nil {
@@ -82,6 +87,13 @@ func (a app) runCustomersList(args []string) error {
 	found, err := customers.List(roots)
 	if err != nil {
 		return err
+	}
+	if identity {
+		projection, err := buildCustomerIdentityProjection(roots, found)
+		if err != nil {
+			return a.maybeJSONError(true, err)
+		}
+		return printJSON(a.stdout, projection)
 	}
 	return a.printCustomers(found, opts.jsonOut)
 }

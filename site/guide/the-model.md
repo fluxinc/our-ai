@@ -90,9 +90,11 @@ under `.my-cli/sessions/`. Create one with `my session start` or
 to the same session. When the current directory is inside an active session,
 content commands write to that session's mount worktree, so session work does
 not leak into the base umbrella. Work leaves a session only through
-`my session finish --land | --publish | --discard`, and `my sync` holds
-outbound publish of a mount while an active session on it is dirty or unlanded.
-`my session status` and `my session list` show active session state; `my doctor`
+`my session finish --land | --publish | --discard`. When an active session is
+dirty or unlanded, `my sync` holds outbound publication only if the base and
+session path sets overlap or cannot be proven disjoint. Unrelated base and
+session changes can proceed. `my session status` and
+`my session list` show active session state; `my doctor`
 includes session health alongside workspace
 diagnostics.
 

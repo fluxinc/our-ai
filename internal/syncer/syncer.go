@@ -43,6 +43,8 @@ type SessionHold struct {
 	RepoPath      string
 	DirtyCount    int
 	UnlandedCount int
+	PendingPaths  []string
+	PathsKnown    bool
 }
 
 // Options controls a sync run.
@@ -884,11 +886,38 @@ func holdActiveSession(in *inspection, opts Options) bool {
 		if !samePath(sessionHold.RepoPath, in.entry.LocalPath) {
 			continue
 		}
-		hold(in, sessionHoldMessage(sessionHold, in.dirty))
-		in.result.NextCommand = sessionHoldNextCommand(sessionHold, in.entry.LocalPath, in.dirty)
+		basePaths := unique(append(append([]string(nil), in.dirty...), in.changed...))
+		if sessionHold.PathsKnown && !pathsIntersect(basePaths, sessionHold.PendingPaths) {
+			continue
+		}
+		blockingDirty := in.dirty
+		if sessionHold.PathsKnown {
+			blockingDirty = intersectPaths(in.dirty, sessionHold.PendingPaths)
+		}
+		hold(in, sessionHoldMessage(sessionHold, blockingDirty))
+		in.result.NextCommand = sessionHoldNextCommand(sessionHold, in.entry.LocalPath, blockingDirty)
 		return true
 	}
 	return false
+}
+
+func pathsIntersect(left, right []string) bool {
+	return len(intersectPaths(left, right)) != 0
+}
+
+func intersectPaths(left, right []string) []string {
+	seen := make(map[string]bool, len(left))
+	for _, path := range left {
+		seen[filepath.ToSlash(strings.TrimPrefix(path, "./"))] = true
+	}
+	var overlaps []string
+	for _, path := range right {
+		path = filepath.ToSlash(strings.TrimPrefix(path, "./"))
+		if seen[path] {
+			overlaps = append(overlaps, path)
+		}
+	}
+	return unique(overlaps)
 }
 
 // sessionHoldMessage explains why an active session holds this mount's publish
@@ -1141,7 +1170,7 @@ func dirtyFiles(repo string, runner Runner) ([]dirtyFile, error) {
 }
 
 func changedFiles(repo, upstream string, runner Runner) ([]string, error) {
-	out, err := git(runner, repo, "diff", "--name-only", upstream+"..HEAD")
+	out, err := git(runner, repo, "diff", "--name-only", "--no-renames", upstream+"..HEAD")
 	if err != nil {
 		return nil, fmt.Errorf("diff %s..HEAD: %s", upstream, commandError(out, err))
 	}

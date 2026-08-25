@@ -517,6 +517,7 @@ path ever falls back to purge or recursive deletion.
 ```sh
 my products list [--json]         # the org's product inventory
 my customers list [--json]        # mounted customer identity records
+my customers list --identity --json  # portable least-privilege ID projection
 my customers add  <domain|slug> [--name TEXT] [--domain DOMAIN]
                      [--domain-confirmed] [--alias TEXT] [--partner ID]
 ```
@@ -679,6 +680,16 @@ rationale.
 
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
+
+- **Release candidate — open-issue simplicity sweep.** The current candidate
+  adds push/PR CI, refreshes manifest-derived reads before serving them,
+  handles deliberately local Gnit control roots without blocking member
+  publication, makes session/base conflict checks path-aware, documents the
+  work-session versus harness-chat boundary, and adds a deterministic
+  least-privilege customer identity projection for detached CI. Older feature
+  and refactor requests without demonstrated operational value were closed
+  instead of expanding the CLI. Plan:
+  [open-issue simplicity sweep](docs/plans/2026-08-25-open-issue-sweep.md).
 
 - **Shipped (v0.40.0; evidence corrected v0.40.1) — one-command,
   agent-guided first-machine bootstrap.** A stable

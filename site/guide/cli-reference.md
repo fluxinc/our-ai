@@ -258,6 +258,7 @@ my fleet set <id> KEY=VALUE...
 my record adopt <path>
 
 my customers list                     # mounted customer identity records
+my customers list --identity --json   # portable least-privilege ID artifact
 my customers add <domain|slug>        # scaffold a mounted customer record
 my products list
 my repos list [--json]

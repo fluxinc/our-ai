@@ -119,6 +119,7 @@ func (a app) runPolicyList(args []string) error {
 	if len(rest) != 0 {
 		return fmt.Errorf("policy list does not accept positional arguments")
 	}
+	a.maybeAutoRefreshReadsAt(home, manifestName, umbrellaRoot, false)
 	ctx, err := loadPolicyContext(home, manifestName, umbrellaRoot)
 	if err != nil {
 		return err
@@ -140,6 +141,7 @@ func (a app) runPolicyShow(args []string) error {
 	if len(rest) != 1 {
 		return fmt.Errorf("usage: my policy show <id>")
 	}
+	a.maybeAutoRefreshReadsAt(home, manifestName, umbrellaRoot, false)
 	ctx, err := loadPolicyContext(home, manifestName, umbrellaRoot)
 	if err != nil {
 		return err
@@ -170,6 +172,7 @@ func (a app) runPolicyStatus(args []string) error {
 	if len(rest) > 1 {
 		return fmt.Errorf("usage: my policy status [id]")
 	}
+	a.maybeAutoRefreshReadsAt(home, manifestName, umbrellaRoot, false)
 	ctx, err := loadPolicyContext(home, manifestName, umbrellaRoot)
 	if err != nil {
 		return err

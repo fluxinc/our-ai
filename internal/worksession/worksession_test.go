@@ -392,6 +392,9 @@ func TestInspectReportsDirtyAndUnlanded(t *testing.T) {
 	if len(m.Dirty) != 1 || !strings.Contains(m.Dirty[0], "meetings/draft.md") {
 		t.Fatalf("dirty = %#v", m.Dirty)
 	}
+	if !m.PathsKnown || strings.Join(m.PendingPaths, ",") != "landed.md,meetings/draft.md" {
+		t.Fatalf("pending path proof = known:%v paths:%#v", m.PathsKnown, m.PendingPaths)
+	}
 }
 
 func TestLandCommitsDirtyContentMergesAndMarksFinished(t *testing.T) {
@@ -481,6 +484,72 @@ func TestLandCommitsDirtyContentMergesAndMarksFinished(t *testing.T) {
 	}
 	if _, err := MarkOutcome(root, session.ID, OutcomePublished, time.Date(2026, 6, 11, 4, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("MarkOutcome with missing session directory: %v", err)
+	}
+}
+
+func TestLandAllowsUnrelatedDirtyBaseFiles(t *testing.T) {
+	root, repo := setupUmbrellaWithMount(t, "handbook")
+	writeFile(t, filepath.Join(repo, "support", "base.md"), "original base\n")
+	runGit(t, repo, "add", "support/base.md")
+	runGit(t, repo, "commit", "-q", "-m", "Seed base support file")
+	session, err := Start(StartOptions{
+		Root: root,
+		Now:  time.Date(2026, 8, 25, 1, 2, 3, 0, time.UTC),
+		Rand: bytes.NewReader([]byte{0xaa, 0x30}),
+		Mounts: []MountSpec{{
+			ID: "handbook", Kind: "handbook", RepoPath: repo,
+			ContentPaths: []string{"meetings", "support"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(repo, "support", "base.md"), "unfinished base\n")
+	writeFile(t, filepath.Join(session.Mounts[0].WorktreePath, "meetings", "session.md"), "session\n")
+	runGit(t, session.Mounts[0].WorktreePath, "add", "-N", "meetings/session.md")
+
+	if _, err := Land(LandOptions{Root: root, ID: session.ID, Message: "Land disjoint session work"}); err != nil {
+		t.Fatalf("Land with disjoint base dirt: %v", err)
+	}
+	if got := readFile(t, filepath.Join(repo, "support", "base.md")); got != "unfinished base\n" {
+		t.Fatalf("base dirt changed during land: %q", got)
+	}
+	if got := readFile(t, filepath.Join(repo, "meetings", "session.md")); got != "session\n" {
+		t.Fatalf("session file not landed: %q", got)
+	}
+	if status := runGit(t, repo, "status", "--short"); !strings.Contains(status, "support/base.md") {
+		t.Fatalf("base dirt was not preserved: %q", status)
+	}
+}
+
+func TestLandHoldsOverlappingDirtyBaseFiles(t *testing.T) {
+	root, repo := setupUmbrellaWithMount(t, "handbook")
+	writeFile(t, filepath.Join(repo, "meetings", "shared.md"), "original\n")
+	runGit(t, repo, "add", "meetings/shared.md")
+	runGit(t, repo, "commit", "-q", "-m", "Seed shared meeting")
+	session, err := Start(StartOptions{
+		Root: root,
+		Now:  time.Date(2026, 8, 25, 1, 2, 3, 0, time.UTC),
+		Rand: bytes.NewReader([]byte{0xaa, 0x31}),
+		Mounts: []MountSpec{{
+			ID: "handbook", Kind: "handbook", RepoPath: repo, ContentPaths: []string{"meetings"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(repo, "meetings", "shared.md"), "base edit\n")
+	writeFile(t, filepath.Join(session.Mounts[0].WorktreePath, "meetings", "shared.md"), "session edit\n")
+
+	_, err = Land(LandOptions{Root: root, ID: session.ID, Message: "Must not land"})
+	if err == nil || !strings.Contains(err.Error(), "base checkout has changes that overlap the session: meetings/shared.md") {
+		t.Fatalf("err = %v, want exact overlap hold", err)
+	}
+	if got := readFile(t, filepath.Join(repo, "meetings", "shared.md")); got != "base edit\n" {
+		t.Fatalf("base edit changed despite hold: %q", got)
+	}
+	if _, statErr := os.Stat(session.Mounts[0].WorktreePath); statErr != nil {
+		t.Fatalf("session worktree removed despite hold: %v", statErr)
 	}
 }
 
