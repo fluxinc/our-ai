@@ -21,8 +21,10 @@ The organization wants one mechanism for a person on a laptop and a claw in a
 pod: at invocation, identity, role, purpose, context, skill and tool grants,
 memory view, model policy and budget are bound once, enforced by a process the
 harness cannot bypass, and audited. That process is cllama. `my` becomes a
-**launcher**: it supplies trusted organization inputs and the human subject,
-requests an invocation, starts the harness bound to it, and revokes it on exit.
+**launcher**: locally it supplies trusted organization inputs and the human
+subject; remotely an administrator publishes stable inputs and a personal
+launcher submits selections only. In both modes it requests an invocation,
+starts the harness bound to it, and revokes it on exit.
 
 ## Operator stories
 
@@ -46,8 +48,10 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
   exercised by this plan.
 - **S7 — the same launch against a central or on-prem proxy.** `proxy.mode:
   remote` with an HTTPS URL and `auth_ref` for a revocable per-person issuer
-  token; laptops hold no provider credentials; cllama binds that token to the
-  immutable person subject and applies server-side `mayAssume(subject, role)`.
+  token; an administrator first publishes the manifest-derived organization
+  membership/loadout bundle; laptops hold no provider credentials; cllama
+  binds each personal token to the immutable person subject and applies
+  server-side `mayAssume(subject, role)` against that current bundle.
   A deployment may replace the token authenticator through cllama's interface.
   Proxy unavailability, revoked issuer, failed role authorization, or an
   unsupported harness adapter fails closed with remediation and never falls
@@ -55,41 +59,53 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
 
 ## Decisions
 
-1. **`my` submits trusted inputs; cllama compiles the effective context.** The
-   invocation request uses cllama's public v1 JSON format. `my` keeps a tiny
-   stdlib HTTP client and pins cllama's JSON conformance fixtures; it does not
-   import a Go module or duplicate final projection logic. The request carries:
-   stable subject `{kind: person, id: github:<immutable
-   id>}`; role; purpose; expiry; ordered **input modules by kind** — organization
-   contract (baseline fleet-work contract + manifest `contract`), role guidance
-   fragments, policies index, data-binding domain notes, session startup
-   context; skill entries (id, description, digest, body for granted static
-   skills); tool specs from manifest `services` of kind `mcp` and `http`
-   (`auth_ref` references only, never secrets); the single memory service
-   reference (kind `memory`); model policy and budget from the role. `my`
-   never assembles the system prompt. Existing `internal/launchplan` and
-   `my compile` remain the organization/control-plane compiler. A new
-   `internal/invocationrequest` maps the selected launch plan into cllama's
-   trusted input types; it is not called a projection.
+1. **`my` compiles typed inputs; cllama compiles the effective context.** The
+   wire operations use cllama's public v1 JSON format. `my` keeps a tiny stdlib
+   HTTP client and pins cllama's JSON conformance fixtures; it does not import a
+   Go module or duplicate final projection logic. Existing
+   `internal/launchplan` and `my compile` remain the organization/control-plane
+   compiler. A new `internal/invocationrequest` exposes three explicit outputs:
+
+   - `BuildTrustedCreate` for the local sidecar: stable person subject, role,
+     purpose, expiry, organization contract, role guidance, policies/data
+     notes, bounded session startup context, granted skill entries, tool specs,
+     memory reference/view, rules, model policy, budget, and channels;
+   - `BuildOrganizationBundle` for a remote administrator: the complete stable
+     `members` map plus organization and every role's loadout, excluding
+     subject, purpose, expiry, and session-local context; tool/provider entries
+     contain only deployment-owned `server://<organization>/<name>` aliases;
+   - `BuildCreateSelection` for a remote personal launch: organization, role,
+     narrowing purpose, harness/protocol, and expiry only. It cannot serialize
+     skills, tools, context modules, memory, model policy, budget, channels, or
+     delegation.
+
+   cllama assembles the final provider-visible request in every case. These
+   builders map into trusted input or selection types; none is called a
+   projection.
 2. **Issuer credential, not PKI.** Sidecar mode: `my proxy ensure` starts a
    pinned cllama with a freshly minted control credential held by the `my`
-   process and stored at `~/.local/state/my-cli/proxy/<manifest>/control.token`
-   (0600). Remote v1 mode: `proxy.auth_ref` resolves a per-person issuer token
-   from the OS keychain or 1Password for the control request only. cllama maps
-   it to the subject; `my` never sends a caller-selected subject, puts the token
-   in a manifest, or exposes it to the harness. Other central authenticators
-   can replace this through cllama's authorizer interface.
+   process and stored in the OS keychain; local state stores only the nonsecret
+   keychain locator. An explicitly documented 0600
+   `~/.local/state/my-cli/proxy/<manifest>/control.token` is the fallback when
+   no supported keychain is available. Remote v1 mode: `proxy.auth_ref`
+   resolves a per-person issuer token from the OS keychain or 1Password for the
+   control request only. cllama maps it to the subject and organization;
+   current role authorization comes from the published organization bundle.
+   `my` never sends a caller-selected subject, puts a raw credential in a
+   manifest, or exposes one to the harness. Other central authenticators can
+   replace this through cllama's authorizer interface.
 3. **The manifest gains the identity-to-role map.** `members: [{subject:
    "github:<immutable-id>", roles: [...]}]`; `roles[]` gains `models`, `budget`,
-   `labels`, `purpose_default`. `my admin members add|remove` uses the governed
+   `harnesses`, `labels`, `purpose_default`. `my admin members add|remove` uses the governed
    manifest-edit flow, so a launcher cannot register itself into a role. The
    sidecar reads `members` from the synced manifest cache to answer
-   `mayAssume`; remote deployments obtain it from their own manifest sync.
+   `mayAssume`; remote deployments receive the same map and every role loadout
+   in one atomic bundle from `my proxy publish-loadouts`.
 4. **Harness adapters are tiny and explicit.** `internal/harness` gains an
    adapter per supported harness: command; launch-scoped config directory;
-   proxy base-URL + bearer binding; protocol (`anthropic-messages` or
-   `openai-responses`); capability declaration and version probe; cleanup and
-   revoke. Claude Code: `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, with
+   proxy base-URL + bearer binding; one of cllama's v1 protocols; capability
+   declaration and version probe; cleanup and revoke. Claude Code uses
+   `anthropic-messages` through `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, with
    `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` cleared. Codex: temporary
    `CODEX_HOME` whose config selects a `model_providers.<cllama>` profile with
    `base_url`, an `env_key` naming a launch-only bearer variable, and Responses
@@ -101,17 +117,22 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
 5. **Launch sequence and revoke-on-exit.** After `launchTarget` and the
    governed policy gate, before `runHarness`: resolve role (`--role`, else
    `state.json` `selected_role`, else error when the manifest declares roles)
-   → build the request → `POST` create → exec the harness under the adapter →
+   → build the trusted local create or remote personal selection → `POST`
+   create → exec the harness under the adapter →
    on exit (any path) `DELETE` the invocation. `my session finish` revokes live
    invocations whose purpose is that session. A configured proxy that is
    unreachable is `proxy_unreachable` with remediation `my proxy ensure`.
 6. **Skills and MCP are delivered by the proxy.** Skill entries travel in the
-   request; harnesses load bodies through cllama's managed `load_skill`. The
+   trusted local create or admin-published remote bundle; harnesses load bodies
+   through cllama's managed `load_skill`. The
    v0.27 launch-root file composition becomes opt-in (`--skills-files`).
    `.mcp.json` is written only with `--mcp-files` or `proxy.mode: none`.
-7. **Provider credentials never touch disk.** Manifest `services[].auth_ref`
-   (`op://`, `env://`) resolve into the sidecar process environment at `my
-   proxy ensure`.
+7. **Provider and tool credentials stay at the proxy.** In sidecar mode,
+   manifest `services[].auth_ref` values (`op://`, `env://`) resolve into the
+   sidecar process environment at `my proxy ensure`. Remote bundle publication
+   accepts only `server://<organization>/<name>` aliases already provisioned in
+   the central deployment; local-only, unknown, or cross-organization refs fail
+   before publication. `my` never reads or transmits a central raw secret.
 8. **Doctor and JSON.** `my doctor` reports proxy mode and health, control
    credential presence, the current subject's role mapping, and adapter
    support per harness. Every new verb takes `--json`.
@@ -130,15 +151,22 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
 1. **Manifest schema.** `members`, role loadout fields, validation, admin
    verbs, docs, acme fixture.
 2. **Sidecar management.** `my proxy ensure|status|stop`; pinned cllama
-   download with checksum verification (reuse `internal/selfupdate`); control
-   credential; `auth_ref` resolution into process env.
+   download with checksum verification (reuse `internal/selfupdate`); keychain
+   control credential with explicit 0600 fallback; `auth_ref` resolution into
+   process env.
 3. **Invocation request and launch.** `internal/invocationrequest`, harness adapters
    (Claude Code, Codex), launch sequence, revoke-on-exit, fail-closed, doctor
    rows. Ships S1.
 4. **Deferred slice — person-bound subscription credentials.** Reserved; not
    scheduled until a vendor-documented gateway contract exists.
 5. **Skill/MCP delivery defaults.** `--skills-files`, `--mcp-files`.
-6. **Remote mode.** `proxy.mode: remote`, fail-closed. Ships S7.
+6. **Remote mode.** `proxy.mode: remote`, fail-closed, plus admin-only
+   `my proxy publish-loadouts --auth-ref <ref> [--dry-run]`. The command compiles
+   the complete organization `members` map and every role through
+   `BuildOrganizationBundle`, atomically publishes the credential-free
+   bundle to cllama, and reports its digest. The admin credential is resolved
+   for this command only; it is neither shared manifest state nor a launch
+   credential. Ships S7.
 
 ## Spike tests (delivery gates; hermetic first, live as extra evidence)
 
@@ -149,27 +177,45 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
   `claude` and `codex` binaries that capture environment and config and issue
   one real protocol request each through the proxy. Asserts every S1
   acceptance item, including unmapped-role refusal, unsupported-harness
-  refusal, and revoke on normal exit, non-zero exit and SIGTERM. A missing
-  `CLLAMA_BIN` fails the CI spike target rather than skipping it.
+  refusal, role-disallowed-harness refusal, and revoke on normal exit,
+  non-zero exit and SIGTERM. A fake
+  keychain proves a second `my` process resolves the stored sidecar credential
+  from a nonsecret locator; a no-keychain case proves the explicit fallback is
+  mode 0600; neither credential reaches the harness. A missing `CLLAMA_BIN`
+  fails the CI spike target rather than skipping it.
 - `TestSpikePinnedHarnessCompatibility` (credential-free delivery gate):
-  installs pinned supported versions of the real Claude Code and Codex CLIs,
+  uses cached, version- and checksum-pinned distributions of the real Claude
+  Code and Codex CLIs,
   runs `claude -p` and `codex exec` through a real cllama with fake Anthropic
   Messages and OpenAI Responses providers, and asserts request shape, streaming
   response handling, one managed-tool loop, launch-config isolation, and exit
-  cleanup. This proves the actual harness adapters without provider spend.
+  cleanup. A missing artifact or checksum mismatch fails the job. This proves
+  the actual harness adapters without provider spend and is mandatory in the
+  release workflow; PRs retain the mandatory fake-harness spike without adding
+  an ambient network-install dependency.
 - `TestSpikeLaptopInvocationLive` (extra release evidence; skips without
   provider credentials): real `claude -p` and `codex exec` through the sidecar
   to supported provider APIs.
 - `TestSpikeOrgProxy` (credential-free): cllama behind a TLS test proxy with
-  two real scoped issuer-token records and a mock OpenAI-compatible "on-prem"
-  provider, `my` in remote mode; proves immutable subject binding, allowed role,
-  cross-subject/cross-role denial, issuer revocation, no issuer token in the
-  harness, fail-closed behavior, and on-prem routing.
+  one admin and two personal scoped issuer-token records plus a mock
+  OpenAI-compatible "on-prem" provider. `my proxy publish-loadouts` publishes
+  the complete bundle; a personal token cannot publish or inspect it; create
+  before publication and for a missing role fails `loadout_missing`; `my` in
+  remote mode proves immutable subject binding, bundle-governed allowed role,
+  member/role removal blocks future creates without mutating existing
+  Invocations, cross-subject/cross-role denial, issuer
+  revocation, recorded bundle/role digests, server-only resolution of one valid
+  tool/provider alias, rejection of raw/local-only/unknown/cross-organization
+  refs, rejection of every capability field in a personal create selection,
+  no issuer or provider/tool token in the harness, fail-closed behavior, and
+  on-prem routing.
 
 ## Sequencing
 
 Blocked on a tagged cllama release shipping the v1 invocation types and
 client, the control API with read endpoints, `mayAssume`, and the conformance
 fixture. Slices 1–2 land before that tag; 3–6
-after. All three credential-free spikes are required CI checks. The README roadmap
-and `docs/plans/README.md` are updated with each slice.
+after. `TestSpikeLaptopInvocation` and `TestSpikeOrgProxy` are required PR and
+release checks; all three credential-free spikes are required by the release
+workflow. The README roadmap and `docs/plans/README.md` are updated with each
+slice.
