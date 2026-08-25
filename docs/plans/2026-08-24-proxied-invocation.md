@@ -158,11 +158,11 @@ invocation, starts the harness bound to it, and revokes it on exit.
    `my ai --flux-task <id>` is an explicit human action after the task appears
    in Flux My work; `my` is not a wake daemon. `my proxy revoke
    --auth-ref <admin-ref> [--role <role>] [--subject <id>]
-   [--bundle-digest <digest>]` requires at least one filter and uses the admin credential
-   to list redacted live Invocations, resolves the matching role-entry digests,
-   and invokes cllama's digest-filtered admin bulk-revoke operation for an
-   urgent published change. The ordinary launcher credential never reaches an
-   admin route.
+   [--bundle-digest <digest>]` requires at least one filter and uses the admin
+   credential. It forwards subject and bundle digest as exact filters; only a
+   role name is resolved through the redacted Invocation list to matching
+   role-entry digests. It then invokes cllama's filtered admin bulk-revoke
+   operation. The ordinary launcher credential never reaches an admin route.
 6. **Skills and MCP are delivered by the proxy.** Skill entries travel in the
    published bundle; harnesses load bodies
    through cllama's managed `load_skill`. The
