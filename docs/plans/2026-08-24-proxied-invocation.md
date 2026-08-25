@@ -106,9 +106,9 @@ invocation, starts the harness bound to it, and revokes it on exit.
    replace this through cllama's authorizer interface.
 3. **The manifest gains governed subjects and effective roles.** `members: [{subject:
    "github:<immutable-id>", roles: [...]}]`; `roles[]` gains `models`, `budget`,
-   `harnesses`, `purpose_default`, ordered `includes`, approved organization and
-   role `contract_revision` references, and role playbook/skill/tool/service
-   grants. `my admin members add|remove` uses the governed
+   `harnesses`, `max_invocation_ttl`, `purpose_default`, ordered `includes`,
+   approved organization and role `contract_revision` references, and role
+   playbook/skill/tool/service grants. `my admin members add|remove` uses the governed
    manifest-edit flow, so a launcher cannot register itself into a role. The
    compiler rejects unknown includes, cycles, unresolved parent conflicts, and
    missing or cyclic skill/tool dependencies; shared diamond ancestry is
@@ -152,7 +152,8 @@ invocation, starts the harness bound to it, and revokes it on exit.
    remotely → build the personal selection → `POST`
    create → exec the harness under the adapter →
    on exit (any path) `DELETE` the invocation. `my session finish` revokes live
-   invocations whose purpose is that session. A configured proxy that is
+   Invocations whose bounded late session reference matches that session; it
+   does not infer session identity from purpose text. A configured proxy that is
    unreachable is `proxy_unreachable` with remediation `my proxy ensure`.
    `my ai --flux-task <id>` is an explicit human action after the task appears
    in Flux My work; `my` is not a wake daemon. `my proxy revoke --role <role>
@@ -179,8 +180,11 @@ invocation, starts the harness bound to it, and revokes it on exit.
    before publication. Managed tool declarations name a principal policy:
    standing role-service alias, invoking-person local `auth_ref`, or a
    short-lived centrally delivered Flux Gate binding. A member cannot select an
-   invoking-person binding. `my` never reads or transmits a central raw secret,
-   and cllama is not a standing per-person credential vault.
+   invoking-person binding. The bundle names the principal policy but not the
+   grant: cllama's execution-time `ToolPrincipalResolver` obtains any short-lived
+   Flux Gate binding only after checking the Invocation, granted tool,
+   operation, and task reference. `my` never reads or transmits a central raw
+   secret, and cllama is not a standing per-person credential vault.
 8. **Doctor and JSON.** `my doctor` reports proxy mode and health, control
    credential presence, the current subject's role mapping, and adapter
    support per harness. Every new verb takes `--json`.
@@ -194,6 +198,9 @@ invocation, starts the harness bound to it, and revokes it on exit.
    one reviewed organization-control-plane change. Only an authorized human
    publishes it by writing the canonical files/records itself. MGL emits a
    staged artifact and never writes the organization control plane.
+   The command launches the MGL authoring Invocation through the same harness
+   adapter, fail-closed create, and revoke-on-exit lifecycle as `my ai`; it does
+   not pass a provider credential or use a special launch path.
    Agent-originated instructions enter the same staging path as
    proposals and never self-approve. MGL's database and indexes are disposable
    staging/cache state, not another canonical store.
@@ -224,7 +231,8 @@ invocation, starts the harness bound to it, and revokes it on exit.
 
 1. **Organization schema and compiler.** Directives/contract-revision
    references, `members`, `controllers`, flattened effective-role loadouts, `includes`, skill
-   dependency closure, validation, admin verbs, docs, and acme fixture.
+   dependency closure, positive bounded `max_invocation_ttl`, validation, admin
+   verbs, docs, and acme fixture.
 2. **Sidecar management.** `my proxy ensure|status|stop`; pinned cllama
    download with checksum verification (reuse `internal/selfupdate`); keychain
    separate bundle-admin and launcher credentials with explicit separate 0600
@@ -247,6 +255,10 @@ invocation, starts the harness bound to it, and revokes it on exit.
    controller against the just-published `controllers` map, creates the scoped
    issuer, and returns its raw token once to the deployment secret destination;
    my-cli does not place it in the manifest.
+   `my proxy provision-issuer <subject> --auth-ref <admin-ref>` likewise
+   requires that exact person in the current bundle, creates the scoped issuer,
+   and writes its one-time raw token only to the selected keychain/1Password
+   destination.
 7. **Role authoring and orchestration adapters.** MGL-backed staged
    `role instruct`, Flux/Flux Gate service declarations, identity-aware tool
    bindings, and S8. The internal `rules-author` and `policy-evaluator` roles
@@ -264,7 +276,8 @@ invocation, starts the harness bound to it, and revokes it on exit.
   one real protocol request each through the proxy. Asserts every S1
   acceptance item, including unmapped-role refusal, unsupported-harness
   refusal, role-disallowed-harness refusal, and revoke on normal exit,
-  non-zero exit and SIGTERM. A fake
+  non-zero exit and SIGTERM. It also proves `my session finish` matches the
+  bounded session reference rather than equal purpose text. A fake
   keychain proves a second `my` process resolves both stored sidecar credentials
   from nonsecret locators; a no-keychain case proves two separate fallbacks are
   mode 0600; the admin credential cannot create, the launcher cannot publish,
@@ -285,7 +298,8 @@ invocation, starts the harness bound to it, and revokes it on exit.
   provider credentials): real `claude -p` and `codex exec` through the sidecar
   to supported provider APIs.
 - `TestSpikeOrgProxy` (credential-free): cllama behind a TLS test proxy with
-  one admin, two personal issuer records, one bundle-declared controller and
+  one admin, two personal issuer records created through
+  `my proxy provision-issuer`, one bundle-declared controller and
   its scoped issuer, plus a mock
   OpenAI-compatible "on-prem" provider. `my proxy publish-loadouts` publishes
   the complete bundle; a personal token cannot publish or inspect it; create
@@ -313,7 +327,9 @@ invocation, starts the harness bound to it, and revokes it on exit.
   bindings, secret starvation, missing/mismatched/forged/expired/replayed/
   wrong-audience release-token denial, a Flux wait, explicit human
   `--flux-task` resume, controller-adapter wake claim, and a new Invocation from
-  bounded late task context.
+  bounded late task context. It launches MGL authoring through the normal
+  adapter/revoke path and proves an execution-time `ToolPrincipalResolver`
+  returns a Flux Gate grant only for the already-granted operation.
 
 ## Sequencing
 
