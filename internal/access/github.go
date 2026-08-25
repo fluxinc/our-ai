@@ -356,8 +356,11 @@ func commandFailureDecision(out []byte, err error, fallback string) Decision {
 	lower := strings.ToLower(message)
 	reason := fallback
 	switch {
-	case strings.Contains(lower, "not logged") || strings.Contains(lower, "authentication"):
+	case errors.Is(err, exec.ErrNotFound) || strings.Contains(lower, "executable file not found"):
+		return Decision{State: StateUnknown, ReasonCode: "gh_missing", Message: "GitHub CLI (gh) is not installed; install it and run `gh auth login`"}
+	case strings.Contains(lower, "not logged") || strings.Contains(lower, "authentication") || strings.Contains(lower, "gh auth login"):
 		reason = "authentication_failed"
+		message = "GitHub CLI is not logged in; run `gh auth login`"
 	case strings.Contains(lower, "network") || strings.Contains(lower, "connection") || strings.Contains(lower, "timeout"):
 		reason = "network_unavailable"
 	}

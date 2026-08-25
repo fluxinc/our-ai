@@ -37,17 +37,21 @@ features:
 ## Install
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/fluxinc/my-cli/master/install.sh | sh
+curl -fsSL https://my-cli.com/install.sh | sh
 ```
 
-Run `my update` to update to the latest release; re-running the installer also
-works.
+The installer needs no Go or Node, persists the user-local binary path, and
+starts guided onboarding on a fresh interactive install. Run `my update` for
+later updates; re-running the installer also works.
 
 ## First Run
 
-Prerequisites are Git, `curl`, and at least one supported AI harness already
-installed and authenticated. On Windows, use the Linux CLI and Git together in
-[one WSL distribution](/guide/windows-wsl), with the umbrella under `/home`.
+Install and authenticate one supported AI harness first; it guides the rest of
+setup. Other prerequisites are Git, `curl`, and a logged-in GitHub CLI (`gh`)
+for organizations hosted on github.com; the installer and `my doctor` tell you
+what is missing. On Windows, use the Linux CLI
+and Git together in [one WSL distribution](/guide/windows-wsl), with the
+umbrella under `/home`.
 
 Create a new organization manifest and local umbrella:
 
@@ -59,16 +63,15 @@ my doctor
 my ai codex
 ```
 
-Or join an existing organization manifest:
+To join an existing organization, use the organization-provided one-liner:
 
 ```sh
-my manifests add acme git@github.com:acme/manifest.git
-my manifests sync acme
-my setup --manifest acme
-cd "$(my root)"
-my doctor
-my ai codex
+curl -fsSL https://my-cli.com/install.sh | sh -s -- --manifest acme git@github.com:acme/manifest.git
 ```
+
+The agent continues from the first missing prerequisite through private GitHub
+authentication, manifest sync, setup, required organization tools, and
+verification.
 
 `my init` creates a private manifest control plane plus a content workspace,
 all local and working offline. Preview publication with `my publish --print`,

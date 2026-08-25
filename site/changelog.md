@@ -7,6 +7,53 @@
 - `my admin repos add` authors validated `catalog/repos.json` declarations
   through the same dirty-checkout and governed-admin gates as other manifest
   control-plane commands.
+- A stable `https://my-cli.com/install.sh` entrypoint can register an existing
+  organization manifest and start guided onboarding in the same one-line
+  install. Fresh interactive installs hand off to an already-installed agent;
+  `--no-onboarding` keeps automation noninteractive. The installer also prints a
+  prerequisite checklist (git, `gh` login, an installed harness) with the
+  install command for the platform, and supports fish and macOS bash profiles.
+- `my manifests add --no-replace` refuses to re-point a registered name at a
+  different URL; the installer uses it so a second team handout cannot silently
+  replace an organization.
+- `my doctor` reports a `prereq` section: `git`, `gh` (installed and logged
+  in), the `my` binary directory on PATH, and installed harness CLIs, each with
+  remediation.
+- `my setup` and `my onboarding --no-agent` clone a registered-but-unsynced
+  manifest on first use instead of failing with "run my manifests sync".
+- `my onboarding --complete` and `--status` provide an explicit local
+  completion seam so re-running the one-line installer resumes interrupted
+  onboarding and leaves completed installations quiet. Completion refuses a
+  missing required tool; optional tools do not block it.
+- `my tools list` and `my tools info` report each declared executable as
+  `present` (with its resolved path) or `missing`, alongside required/optional
+  mode. `my doctor` includes the mode in tool details.
+- A reproducible Ubuntu container matrix exercises agent-backed AUTHOR and JOIN
+  onboarding on arm64 and amd64, preserving JSONL transcripts.
+
+### Changed
+
+- The release installer persists `~/.local/bin` in the operator's shell profile
+  and no longer leaves a fresh install dependent on a temporary PATH export.
+- Agent onboarding treats a registered-but-unsynced manifest as a resumable
+  JOIN bootstrap, walking GitHub authentication, manifest sync, setup, and
+  required organization tools instead of failing before the agent launches.
+- Installer manifest registration fails closed when the same name already
+  points at a different URL. Invalid existing checkouts launch a JOIN_REPAIR
+  agent handoff with the exact load error instead of failing before help starts.
+
+### Fixed
+
+- Authenticated GitHub HTTPS manifest and mount operations now supply
+  `gh auth git-credential` to Git per invocation, preventing obsolete password
+  prompts without modifying global Git configuration. Git runs with
+  `GIT_TERMINAL_PROMPT=0` so agents and installers never hang on a prompt, and
+  authentication failures carry remediation (`gh auth login` or the SSH URL).
+  A missing or logged-out `gh` is reported as `gh_missing` /
+  `authentication_failed` with the install/login command instead of a raw
+  `exec` error.
+- Quickstart no longer mixes `#` comment lines into paste blocks and documents
+  that `gh` is required for github.com-hosted manifests and mounts.
 
 ## 0.39.0 - 2026-08-14
 

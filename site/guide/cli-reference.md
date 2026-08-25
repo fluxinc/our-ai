@@ -35,6 +35,7 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 my init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
 my publish [--manifest NAME] [--home DIR] [--print] [--json]
 my onboarding [--agent|--no-agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+my onboarding --status|--complete [--manifest NAME] [--home DIR] [--umbrella DIR]
 my setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--verbose] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 my root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
@@ -56,7 +57,18 @@ model greets the operator, starts a split-pane learn-by-example walkthrough, and
 has the operator run small sets of validated `my` commands with a pause after
 each set. A harness is auto-detected when the choice is unambiguous; pass
 `--harness NAME` to choose. `--agent` forces the harness path from
-non-interactive contexts.
+non-interactive contexts. A registered-but-unsynced manifest launches a
+JOIN_BOOTSTRAP conversation from the current directory instead of failing
+before the agent can help; after authentication and manifest sync, onboarding
+continues through the normal setup-backed JOIN path. If no supported harness is
+installed, onboarding stops with the agent-first prerequisite and a resumable
+command.
+
+At the end of the walkthrough, `my onboarding --complete` records local tour
+completion after setup and required tools are present. `--status` reports that
+state. Neither command publishes, accepts policy, or installs tools; optional
+tools do not block completion. The installer uses this explicit state to resume
+an interrupted walkthrough and stay quiet after completion.
 
 `my onboarding --no-agent` and non-interactive runs use the deterministic
 walkthrough: with no registered manifest it prints the

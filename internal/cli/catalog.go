@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 
 	"github.com/fluxinc/my-cli/internal/manifest"
@@ -35,6 +36,8 @@ Tool entries are operator-facing hints from synced organization manifests.`)
 type toolInfo struct {
 	Manifest string        `json:"manifest"`
 	Tool     manifest.Tool `json:"tool"`
+	Status   string        `json:"status"`
+	Path     string        `json:"path,omitempty"`
 }
 
 func (a app) runToolsList(args []string) error {
@@ -63,7 +66,11 @@ func (a app) runToolsList(args []string) error {
 		return printJSON(a.stdout, infos)
 	}
 	for _, info := range infos {
-		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", info.Manifest, info.Tool.ID, info.Tool.Mode, info.Tool.Purpose)
+		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\t%s", info.Manifest, info.Tool.ID, info.Tool.Mode, info.Status, info.Tool.Purpose)
+		if info.Path != "" {
+			fmt.Fprintf(a.stdout, "\t%s", info.Path)
+		}
+		fmt.Fprintln(a.stdout)
 	}
 	return nil
 }
@@ -94,7 +101,10 @@ func (a app) runToolsInfo(args []string) error {
 		return printJSON(a.stdout, infos)
 	}
 	for _, info := range infos {
-		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", info.Manifest, info.Tool.ID, info.Tool.Mode, info.Tool.Purpose)
+		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\t%s\n", info.Manifest, info.Tool.ID, info.Tool.Mode, info.Status, info.Tool.Purpose)
+		if info.Path != "" {
+			fmt.Fprintf(a.stdout, "path\t%s\n", info.Path)
+		}
 		for _, command := range info.Tool.Install.Commands {
 			fmt.Fprintf(a.stdout, "install\t%s\n", command)
 		}
@@ -192,7 +202,7 @@ func (a app) listToolInfo(home, manifestName string) ([]toolInfo, error) {
 	var out []toolInfo
 	for _, doc := range docs {
 		for _, tool := range doc.doc.Tools {
-			out = append(out, toolInfo{Manifest: doc.ref.Name, Tool: tool})
+			out = append(out, inspectTool(doc.ref.Name, tool))
 		}
 	}
 	return out, nil
@@ -207,7 +217,7 @@ func (a app) findToolInfo(home, manifestName, toolID string) ([]toolInfo, error)
 	for _, doc := range docs {
 		for _, tool := range doc.doc.Tools {
 			if tool.ID == toolID {
-				out = append(out, toolInfo{Manifest: doc.ref.Name, Tool: tool})
+				out = append(out, inspectTool(doc.ref.Name, tool))
 			}
 		}
 	}
@@ -215,4 +225,13 @@ func (a app) findToolInfo(home, manifestName, toolID string) ([]toolInfo, error)
 		return nil, fmt.Errorf("tool %q is not declared by any selected manifest", toolID)
 	}
 	return out, nil
+}
+
+func inspectTool(manifestName string, tool manifest.Tool) toolInfo {
+	info := toolInfo{Manifest: manifestName, Tool: tool, Status: "missing"}
+	if path, err := exec.LookPath(tool.ID); err == nil {
+		info.Status = "present"
+		info.Path = path
+	}
+	return info
 }

@@ -15,6 +15,23 @@
 
 ## First Run
 
+Install and authenticate a supported agent first, then use the stable installer:
+
+```sh
+curl -fsSL https://my-cli.com/install.sh | sh
+```
+
+For an existing organization, the same command can register the manifest before
+the guide starts:
+
+```sh
+curl -fsSL https://my-cli.com/install.sh | sh -s -- --manifest acme <git-url>
+```
+
+The installer requires neither Go nor Node and persists `~/.local/bin` in the
+shell profile. The commands below remain available to resume or revisit the
+guide directly.
+
 ```sh
 my onboarding
 ```
@@ -48,6 +65,22 @@ joining an existing one:
   and teaches the basic daily loop: launch a harness, start/resume/finish a
   work session, run pull-only `my sync`, preview publish with
   `my sync --push --print`, publish with `my sync --push`, and run `my doctor`.
+- With a registered but unsynced manifest, the harness starts safely from the
+  current directory and takes the JOIN_BOOTSTRAP branch. It resolves Git and
+  GitHub CLI availability/authentication, reruns `my manifests sync`, then
+  continues into the ordinary JOIN path. This partial state is resumable and is
+  never mistaken for a request to create a new organization.
+
+After setup exposes the manifest's tool declarations, the guide checks required
+tools separately from optional tools. It walks one missing required tool at a
+time using `my tools info <name>` and asks the operator before running any
+installer. Optional tools are explained but never silently installed.
+
+When the operator confirms the walkthrough worked, the guide finishes with
+`my onboarding --complete` and verifies `my onboarding --status`. Completion is
+local state only; it does not publish, accept policy, or install anything, and
+it is refused while a required tool is missing. The stable installer uses this
+state to resume interrupted onboarding while keeping completed updates quiet.
 
 Onboarding deliberately avoids teaching the full CLI. For meeting transcripts,
 fleet/support context, notes, screenshots, or issue details, the human should

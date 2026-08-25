@@ -69,6 +69,7 @@ type doctorOptions struct {
 }
 
 type doctorReport struct {
+	Prereqs      []doctorItem `json:"prereqs,omitempty"`
 	Version      []doctorItem `json:"version,omitempty"`
 	Legacy       []doctorItem `json:"legacy,omitempty"`
 	Umbrella     []doctorItem `json:"umbrella,omitempty"`
@@ -97,6 +98,7 @@ type doctorItem struct {
 
 func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doctorOptions) doctorReport {
 	var report doctorReport
+	report.Prereqs = append(report.Prereqs, a.doctorPrereqs()...)
 	report.Version = append(report.Version, a.doctorVersion(home))
 	var root string
 	if umbrellaRoot != "" {
@@ -1034,6 +1036,7 @@ func doctorTools(manifestName string, tools []manifest.Tool) []doctorItem {
 	out := make([]doctorItem, 0, len(tools))
 	for _, tool := range tools {
 		item := doctorItem{Name: manifestName + ":" + tool.ID}
+		item.Details = append(item.Details, "mode="+tool.Mode)
 		if path, err := exec.LookPath(tool.ID); err == nil {
 			item.Status = "ok"
 			item.Path = path
@@ -1160,6 +1163,7 @@ func (a app) printDoctorReport(report doctorReport) {
 			}
 		}
 	}
+	printItems("prereq", report.Prereqs)
 	printItems("manifest", report.Manifests)
 	printItems("version", report.Version)
 	printItems("legacy", report.Legacy)

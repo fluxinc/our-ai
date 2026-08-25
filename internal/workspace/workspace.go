@@ -360,6 +360,9 @@ func syncOne(entry Entry, dryRun bool, runner Runner) SyncResult {
 	if err != nil {
 		res.Status = "failed"
 		res.Error = commandError(out, err)
+		if hint := manifest.CloneFailureHint(entry.GitURL, res.Error); hint != "" {
+			res.Error += "; " + hint
+		}
 		return res
 	}
 	var messages []string
@@ -425,7 +428,11 @@ func expandLocalPath(home, path string) (string, error) {
 }
 
 func execCommand(name string, args ...string) ([]byte, error) {
-	return exec.Command(name, args...).CombinedOutput()
+	cmd := exec.Command(name, args...)
+	if name == "git" {
+		cmd.Env = manifest.GitEnv(os.Environ())
+	}
+	return cmd.CombinedOutput()
 }
 
 func resolveHome(override string) (string, error) {

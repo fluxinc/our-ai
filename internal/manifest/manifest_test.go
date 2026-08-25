@@ -62,6 +62,30 @@ func TestAddAndLoadRegistry(t *testing.T) {
 	}
 }
 
+func TestGitHubCredentialEnvAppendsTemporaryGHHelper(t *testing.T) {
+	base := []string{
+		"PATH=/test/bin",
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=core.askPass",
+		"GIT_CONFIG_VALUE_0=true",
+	}
+	got := gitHubCredentialEnv(base)
+	want := map[string]string{
+		"GIT_CONFIG_COUNT":   "3",
+		"GIT_CONFIG_KEY_0":   "core.askPass",
+		"GIT_CONFIG_VALUE_0": "true",
+		"GIT_CONFIG_KEY_1":   "credential.https://github.com.helper",
+		"GIT_CONFIG_VALUE_1": "",
+		"GIT_CONFIG_KEY_2":   "credential.https://github.com.helper",
+		"GIT_CONFIG_VALUE_2": "!gh auth git-credential",
+	}
+	for key, value := range want {
+		if gotValue, ok := envValue(got, key); !ok || gotValue != value {
+			t.Fatalf("%s = %q, %v; want %q", key, gotValue, ok, value)
+		}
+	}
+}
+
 func TestRegistryDefaultUsesFirstAddedManifest(t *testing.T) {
 	home := t.TempDir()
 	if _, err := Add(home, "acme", "https://github.com/acme/acme-ai-manifest.git"); err != nil {

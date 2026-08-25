@@ -219,6 +219,7 @@ func (a app) printUsage() {
 Usage:
   my setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--verbose] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   my onboarding [--agent|--no-agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  my onboarding --status|--complete [--manifest NAME] [--home DIR] [--umbrella DIR]
   my root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
   my update [--check] [--version X.Y.Z] [--json] [--yes]

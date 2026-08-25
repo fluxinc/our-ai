@@ -11,6 +11,7 @@ import (
 	pathpkg "path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -857,6 +858,9 @@ func syncOne(ref Ref, dryRun bool, runner Runner) SyncResult {
 		res.Error = strings.TrimSpace(string(out))
 		if res.Error == "" {
 			res.Error = err.Error()
+		}
+		if hint := cloneFailureHint(ref.GitURL, res.Error); hint != "" {
+			res.Error += "; " + hint
 		}
 		return res
 	}
@@ -1902,7 +1906,91 @@ func portableID(value string) bool {
 }
 
 func execCommand(name string, args ...string) ([]byte, error) {
-	return exec.Command(name, args...).CombinedOutput()
+	cmd := exec.Command(name, args...)
+	if name == "git" {
+		// GitHub authorization is established through gh immediately before
+		// manifest Git operations. Supply gh's credential helper to this child
+		// process as well so an authenticated HTTPS clone does not fall through
+		// to Git's obsolete username/password prompt. This is invocation-local:
+		// it does not rewrite the operator's global Git configuration.
+		cmd.Env = GitEnv(os.Environ())
+	}
+	return cmd.CombinedOutput()
+}
+
+// GitEnv returns the environment my gives every Git child process: gh's
+// credential helper for github.com HTTPS (invocation-local, never written to
+// the operator's Git config) and GIT_TERMINAL_PROMPT=0, because my is operated
+// by agents and installers that a password prompt would hang. Failures are
+// explained by CloneFailureHint instead.
+func GitEnv(base []string) []string {
+	return setEnvValue(gitHubCredentialEnv(base), "GIT_TERMINAL_PROMPT", "0")
+}
+
+// CloneFailureHint turns a raw Git authentication failure into remediation.
+func CloneFailureHint(gitURL, output string) string {
+	return cloneFailureHint(gitURL, output)
+}
+
+func cloneFailureHint(gitURL, output string) string {
+	lower := strings.ToLower(output)
+	authFailed := strings.Contains(lower, "could not read username") ||
+		strings.Contains(lower, "authentication failed") ||
+		strings.Contains(lower, "terminal prompts disabled") ||
+		strings.Contains(lower, "permission denied (publickey)") ||
+		strings.Contains(lower, "repository not found")
+	if !authFailed {
+		return ""
+	}
+	if strings.HasPrefix(gitURL, "https://github.com/") {
+		hint := "this looks like a private GitHub repository; run `gh auth login` (any protocol) and retry"
+		if name, ok := access.GitHubRepositoryName(gitURL); ok {
+			hint += ", or register the SSH URL git@github.com:" + name + ".git"
+		}
+		return hint
+	}
+	if strings.HasPrefix(gitURL, "git@github.com:") || strings.HasPrefix(gitURL, "ssh://") {
+		return "SSH authentication to the Git host failed; add your SSH key (for GitHub: `gh auth login` with SSH, or `gh ssh-key add`) and retry"
+	}
+	return "Git authentication failed; make sure your credentials for this host work (`git ls-remote " + gitURL + "`) and retry"
+}
+
+func gitHubCredentialEnv(base []string) []string {
+	env := append([]string(nil), base...)
+	count := 0
+	if value, ok := envValue(env, "GIT_CONFIG_COUNT"); ok {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed >= 0 {
+			count = parsed
+		}
+	}
+	env = setEnvValue(env, fmt.Sprintf("GIT_CONFIG_KEY_%d", count), "credential.https://github.com.helper")
+	env = setEnvValue(env, fmt.Sprintf("GIT_CONFIG_VALUE_%d", count), "")
+	count++
+	env = setEnvValue(env, fmt.Sprintf("GIT_CONFIG_KEY_%d", count), "credential.https://github.com.helper")
+	env = setEnvValue(env, fmt.Sprintf("GIT_CONFIG_VALUE_%d", count), "!gh auth git-credential")
+	count++
+	return setEnvValue(env, "GIT_CONFIG_COUNT", strconv.Itoa(count))
+}
+
+func envValue(env []string, key string) (string, bool) {
+	prefix := key + "="
+	for i := len(env) - 1; i >= 0; i-- {
+		if strings.HasPrefix(env[i], prefix) {
+			return strings.TrimPrefix(env[i], prefix), true
+		}
+	}
+	return "", false
+}
+
+func setEnvValue(env []string, key, value string) []string {
+	prefix := key + "="
+	filtered := env[:0]
+	for _, item := range env {
+		if !strings.HasPrefix(item, prefix) {
+			filtered = append(filtered, item)
+		}
+	}
+	return append(filtered, prefix+value)
 }
 
 func cacheRoot(home string) string {

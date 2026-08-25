@@ -2,11 +2,15 @@
 
 ## Prerequisites
 
-Install Git, `curl`, `tar`, and either `sha256sum` or `shasum`. You also need
-at least one supported harness CLI (for example Codex, Claude Code, Grok, or
-Cursor) before `my ai` can launch it. The GitHub CLI (`gh`) is needed only when
-`my publish` creates repositories or when your normal private-HTTPS Git
-authentication uses it.
+Install Git, `curl`, `tar`, and either `sha256sum` or `shasum`. Install and
+authenticate one supported agent harness (for example Codex, Claude Code, Grok,
+or Cursor) first; it will guide the remaining machine setup. The GitHub CLI
+(`gh`, logged in) is required for any manifest or mount hosted on github.com —
+`my` resolves repository access through `gh` and clones private HTTPS URLs
+with its credentials — and when `my publish` creates repositories. The
+installer and `my doctor` (`prereq` rows) report what is missing with the
+install command for your platform; guided onboarding checks it again before
+attempting private Git work.
 
 On Windows, use [WSL](./windows-wsl): install and run the Linux `my` binary,
 Git, and your harness inside the same WSL distribution. Keep the umbrella
@@ -18,13 +22,19 @@ WSL Git.
 Install the latest release:
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/fluxinc/my-cli/master/install.sh | sh
+curl -fsSL https://my-cli.com/install.sh | sh
 ```
 
-If the install directory is not on your path, add it:
+No Go or Node installation is required. On a fresh interactive install, the
+script persists `~/.local/bin` in the current shell's profile, installs the
+bundled agent skill, and starts `my onboarding`. The current shell may need to
+load that profile once after onboarding returns; the installer prints the exact
+`source` command when needed.
+
+For an automation-only install, disable the agent handoff explicitly:
 
 ```sh
-export PATH="$HOME/.local/bin:$PATH"
+curl -fsSL https://my-cli.com/install.sh | sh -s -- --no-onboarding
 ```
 
 Verify the binary:
@@ -34,8 +44,9 @@ my version
 my doctor
 ```
 
-`my doctor` reports manifest validity, generated guidance/MCP drift, legacy
-global org-skill drift,
+`my doctor` reports machine prerequisites (`git`, `gh` login, the `my`
+binary directory on PATH, installed harnesses), manifest validity, generated
+guidance/MCP drift, legacy global org-skill drift,
 service materialization health, local Git freshness, and the last
 `.my-cli/last-sync.json` audit when an umbrella is present. Add `--no-fetch` for
 an offline freshness check, or `--fix` to fast-forward clean stale
@@ -84,29 +95,39 @@ admins while the whole team pushes content.
 
 ### Install an existing organization manifest
 
-If your team already has a manifest repo, register, sync, and materialize it:
+If your team already has a manifest repo, its onboarding handout should be one
+command. This installs My AI, registers the manifest, and starts the agent:
 
 ```sh
-my manifests add acme <git-url>
-my manifests sync acme
-my setup --manifest acme
-cd "$(my root)"
-my doctor
-my ai codex
+curl -fsSL https://my-cli.com/install.sh | sh -s -- --manifest acme <git-url>
 ```
 
-Private GitHub manifests use your normal Git credentials. For HTTPS private
-repos, make sure `gh auth login` (or your usual Git credentials) works before
-running `my manifests sync` against a private repo.
+The same join, step by step, works without the installer: `my manifests add
+acme <git-url>` then `my setup --manifest acme` — setup clones a
+registered-but-unsynced manifest itself, and `my manifests sync` is only
+needed to pull later updates.
+
+The JOIN bootstrap is resumable. If the manifest is registered but not synced,
+the agent begins with Git and GitHub CLI availability, `gh auth status`/login,
+and `my manifests sync acme`, then continues through role selection, setup,
+required organization tools, `my doctor`, and first launch. For GitHub HTTPS,
+My AI supplies `gh auth git-credential` to the Git child process only for that
+invocation; it does not rewrite global Git configuration. SSH URLs continue to
+use the user's normal SSH keys.
 
 ## Optional guided onboarding
 
 ```sh
 my onboarding
-# or: my onboarding --no-agent, then my setup
-# my setup --manifest acme    # override the current/default manifest
-# my setup --role operator    # optional: select role-specific guidance/services
-# my setup --interactive      # prompt for manifest/role choices
+```
+
+Without an agent, or to override choices directly:
+
+```sh
+my onboarding --no-agent
+my setup --manifest acme
+my setup --role operator
+my setup --interactive
 ```
 
 `my onboarding` launches guided onboarding in a harness when run interactively.
@@ -176,7 +197,7 @@ and prints the right follow-up command.
 Re-running the installer still works as a fallback:
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/fluxinc/my-cli/master/install.sh | sh
+curl -fsSL https://my-cli.com/install.sh | sh
 ```
 
 The installer also refreshes the bundled `my-cli` self-skill in existing harnesses

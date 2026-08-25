@@ -13,39 +13,38 @@ those capabilities onto every agent surface, the same way, every time.
 
 Documentation: https://my-cli.com/
 
-Prerequisites: Git, `curl`, `tar`, and either `sha256sum` or `shasum`, plus at
-least one supported harness CLI. The GitHub CLI (`gh`) is only needed when
-`my publish` creates repositories or when your normal private-HTTPS Git
-authentication uses it. Windows users should run the Linux CLI and Git
-together inside [WSL](https://my-cli.com/guide/windows-wsl), with the umbrella
-under the WSL home directory.
+Prerequisites: Git, `curl`, `tar`, and either `sha256sum` or `shasum`, plus one
+installed and authenticated agent harness. Install the agent first so it can
+guide the rest of first-machine setup. The GitHub CLI (`gh`, logged in) is
+required for any manifest or mount hosted on github.com and when `my publish`
+creates repositories; the installer and `my doctor` report it, and the guide
+checks it before attempting private Git operations. Windows users should
+run the Linux CLI and Git together inside
+[WSL](https://my-cli.com/guide/windows-wsl), with the umbrella under the WSL
+home directory.
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/fluxinc/my-cli/master/install.sh | sh
-
-# Create and register a new local organization manifest:
-my init acme --name "Acme"
-my setup
-cd "$(my root)"
-my ai codex
+curl -fsSL https://my-cli.com/install.sh | sh
 ```
 
-To join an organization that already has a manifest:
+On a fresh interactive install, that command installs the release binary,
+persists `~/.local/bin` in the shell profile, installs the bundled agent skill,
+and starts guided onboarding. It does not require Go or Node. For CI or an
+automation-only install, add `--no-onboarding` after `sh -s --`.
+
+An organization can give a new teammate one complete bootstrap command:
 
 ```sh
-my manifests add acme <manifest-git-url>
-my manifests sync acme
-my setup --manifest acme
-cd "$(my root)"
-my ai codex
+curl -fsSL https://my-cli.com/install.sh | sh -s -- --manifest acme <manifest-git-url>
 ```
 
-Those are the two complete first-run paths: produce a manifest with `my init`,
-or install/register an existing one with `my manifests add`; then materialize
-the umbrella with `my setup` and launch from it. `my onboarding` launches a harness in an interactive
-terminal, greets the operator, and starts a split-pane walkthrough where the
-operator runs small sets of validated `my` commands while the model explains
-and pauses after each set.
+The agent resumes from whatever is missing: GitHub CLI installation/login,
+manifest sync, setup, role selection, required organization tools, verification,
+and first launch. An authenticated `gh` session is supplied to HTTPS Git only
+for the current invocation; My AI does not rewrite global Git configuration.
+Creating a new organization remains a guided `my init` path. `my onboarding`
+can be rerun at any point and starts a split-pane walkthrough where the operator
+runs small sets of validated `my` commands while the model explains and pauses.
 Use `my onboarding --no-agent` for the deterministic walkthrough that explains
 the model and points at `my setup --interactive`. `my setup` remains the
 scriptable machine configurator. `my ai codex` resolves the umbrella, verifies
@@ -62,7 +61,8 @@ published content repo, and pushes both; teammates join with a single
 `my manifests add acme <manifest-url>`.
 Run `my update` to update an install from the latest GitHub release; re-running
 `install.sh` still works as a fallback. Developers can still install from source
-with `go install github.com/fluxinc/my-cli/cmd/my@latest`. The installer also
+with `go install github.com/fluxinc/my-cli/cmd/my@latest`, but Go is not a user
+installation prerequisite. The installer also
 installs My AI's bundled `my-cli` skill into existing harnesses
 so agents know how to use the CLI itself.
 
@@ -679,6 +679,21 @@ rationale.
 
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
+
+- **Active — one-command, agent-guided first-machine bootstrap.** A stable
+  `https://my-cli.com/install.sh` entrypoint installs the release without Go,
+  persists the user-local binary path, optionally registers an existing private
+  manifest in the same command, and hands fresh interactive installs to an
+  already-installed agent. Registered-but-unsynced manifests are now a
+  resumable JOIN state; the guide walks GitHub authentication, setup, and
+  required organization tools one issue at a time. GitHub HTTPS Git commands
+  use the authenticated `gh` credential helper per invocation without global
+  Git configuration changes, never prompt for passwords, and explain
+  authentication failures. `my setup` and `my onboarding --no-agent` clone a
+  registered-but-unsynced manifest themselves, and `my doctor` gains a
+  `prereq` section (git, `gh` login, PATH, harness). Proven end to end on clean
+  containers. Plan:
+  [first-run bootstrap](docs/plans/2026-08-21-first-run-bootstrap.md).
 
 - **Shipped (v0.39.0) — leftover worktree detection and complete first
   run.** `my session leftovers` and doctor now find raw harness-created

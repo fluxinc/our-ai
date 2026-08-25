@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fluxinc/my-cli/internal/manifest"
@@ -46,6 +47,53 @@ func loadDocsForRefs(refs []manifest.Ref) ([]registeredDoc, error) {
 		docs = append(docs, registeredDoc{ref: ref, doc: doc})
 	}
 	return docs, nil
+}
+
+// ensureManifestSynced self-heals the common first-run sequence
+// `my manifests add NAME URL` followed by `my setup`: when the selected
+// registered manifest has a remote but no local checkout yet, it is cloned
+// now instead of failing with "run my manifests sync". Failures carry the
+// sync remediation. A missing selection or a local-only manifest is left alone.
+func (a app) ensureManifestSynced(home, manifestName string) error {
+	var ref manifest.Ref
+	if manifestName != "" {
+		found, ok, err := manifest.Find(home, manifestName)
+		if err != nil || !ok {
+			return nil
+		}
+		ref = found
+	} else {
+		reg, err := manifest.LoadRegistry(home)
+		if err != nil || len(reg.Manifests) == 0 {
+			return nil
+		}
+		found, ok := reg.DefaultRef()
+		if !ok {
+			return nil
+		}
+		ref = found
+	}
+	if ref.GitURL == "" || ref.GitURL == ref.LocalPath {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(ref.LocalPath, "manifest.json")); err == nil {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(ref.LocalPath, ".git")); err == nil {
+		return nil
+	}
+	fmt.Fprintf(a.stderr, "notice\tmanifest %s is not synced yet; cloning %s\n", ref.Name, ref.GitURL)
+	results, err := manifest.Sync(home, []string{ref.Name}, false, false, nil)
+	if err != nil {
+		return fmt.Errorf("manifest %q could not be synced: %w", ref.Name, err)
+	}
+	for _, r := range results {
+		if r.Status == "failed" {
+			return fmt.Errorf("manifest %q could not be synced: %s", ref.Name, r.Error)
+		}
+		fmt.Fprintf(a.stderr, "notice\tmanifest %s %s %s\n", r.Name, r.Status, r.LocalPath)
+	}
+	return nil
 }
 
 func loadSingleRegisteredDoc(home, manifestName string) (registeredDoc, error) {
@@ -194,7 +242,7 @@ func (a app) runManifest(args []string) error {
 
 func (a app) printManifestUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  my manifests add <name> <git-url> [--home DIR] [--json]
+  my manifests add <name> <git-url> [--no-replace] [--home DIR] [--json]
   my manifests list [--home DIR] [--json]
   my manifests default [<name>] [--clear] [--home DIR] [--json]
   my manifests sync [name...] | --all [--home DIR] [--umbrella DIR] [--no-derived] [--print] [--json]
@@ -204,15 +252,26 @@ func (a app) printManifestUsage() {
 func (a app) runManifestAdd(args []string) error {
 	var home string
 	var jsonOut bool
+	var noReplace bool
 	fs := newFlagSet("my manifests add", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	fs.BoolVar(&noReplace, "no-replace", false, "refuse to replace a different registered URL")
 	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
 	if err != nil {
 		return err
 	}
 	if len(rest) != 2 {
 		return fmt.Errorf("usage: my manifests add <name> <git-url>")
+	}
+	if noReplace {
+		existing, found, err := manifest.Find(home, rest[0])
+		if err != nil {
+			return err
+		}
+		if found && !manifest.SameRemote(existing.GitURL, rest[1]) {
+			return fmt.Errorf("manifest %q is already registered as %s; refusing to replace it with %s (run my manifests add without --no-replace to change it intentionally)", rest[0], existing.GitURL, rest[1])
+		}
 	}
 	ref, err := manifest.Add(home, rest[0], rest[1])
 	if err != nil {

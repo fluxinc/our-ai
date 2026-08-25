@@ -37,7 +37,7 @@ Linux `gh` package here as well.
 ## Install and verify My AI
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/fluxinc/my-cli/master/install.sh | sh
+curl -fsSL https://my-cli.com/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 
 my version

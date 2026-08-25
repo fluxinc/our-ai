@@ -151,6 +151,139 @@ func TestOnboardAgentZeroManifestExecsHarnessFromCurrentDir(t *testing.T) {
 	}
 }
 
+func TestOnboardAgentRegisteredUnsyncedManifestExecsBootstrapHarness(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	const manifestURL = "https://github.com/acme/acme-manifest.git"
+	if _, err := manifest.Add(home, "acme", manifestURL); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	var gotPath, gotDir string
+	var gotArgs []string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			return "/test/bin/codex", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotPath = path
+			gotArgs = append([]string(nil), args...)
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{
+		"my", "onboarding", "--agent", "--harness", "codex",
+		"--manifest", "acme", "--home", home,
+	}); err != nil {
+		t.Fatalf("onboarding unsynced manifest: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if gotPath != "/test/bin/codex" || gotDir != cwd {
+		t.Fatalf("exec path=%q dir=%q, want codex in cwd %q", gotPath, gotDir, cwd)
+	}
+	if len(gotArgs) != 1 ||
+		!strings.Contains(gotArgs[0], "Branch: JOIN_BOOTSTRAP") ||
+		!strings.Contains(gotArgs[0], "acme") ||
+		!strings.Contains(gotArgs[0], manifestURL) ||
+		!strings.Contains(gotArgs[0], "my manifests sync acme") {
+		t.Fatalf("initial prompt args = %#v", gotArgs)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "my-cli")); err != nil {
+		t.Fatalf("self-skill was not installed for unsynced-manifest agent launch: %v", err)
+	}
+}
+
+func TestOnboardAgentRegisteredInvalidManifestExecsRepairHarness(t *testing.T) {
+	home := t.TempDir()
+	ref, err := manifest.Add(home, "acme", "https://github.com/acme/acme-manifest.git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(ref.LocalPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ref.LocalPath, "manifest.json"), []byte("not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var gotArgs []string
+	a := app{
+		stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{},
+		lookPath: func(string) (string, error) { return "/test/bin/codex", nil },
+		execHarness: func(_ string, args []string, _ string) error {
+			gotArgs = append([]string(nil), args...)
+			return nil
+		},
+	}
+	if err := a.run([]string{"my", "onboarding", "--agent", "--harness", "codex", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if len(gotArgs) != 1 || !strings.Contains(gotArgs[0], "Branch: JOIN_REPAIR") || !strings.Contains(gotArgs[0], "invalid JSON") || !strings.Contains(gotArgs[0], ref.LocalPath) {
+		t.Fatalf("repair prompt args = %#v", gotArgs)
+	}
+}
+
+func TestOnboardCompletionStatusRequiresExplicitCompletion(t *testing.T) {
+	home := t.TempDir()
+	umbrellaRoot := configuredUmbrella(t, home)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	statusArgs := []string{"my", "onboarding", "--status", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}
+	if err := a.run(statusArgs); err == nil || !strings.Contains(err.Error(), "incomplete") {
+		t.Fatalf("status before completion error = %v", err)
+	}
+	if err := a.run([]string{"my", "onboarding", "--complete", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+	stdout.Reset()
+	if err := a.run(statusArgs); err != nil {
+		t.Fatalf("status after completion: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "complete\tacme\t") {
+		t.Fatalf("status stdout = %q", stdout.String())
+	}
+}
+
+func TestOnboardCompletionRequiresRequiredToolsButNotOptionalTools(t *testing.T) {
+	home := t.TempDir()
+	umbrellaRoot := configuredUmbrella(t, home)
+	ref, found, err := manifest.Find(home, "acme")
+	if err != nil || !found {
+		t.Fatalf("find manifest: found=%v err=%v", found, err)
+	}
+	doc, _, err := manifest.LoadDocument(ref.LocalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc.Tools = []manifest.Tool{
+		{ID: "acme-required", Mode: "required", Purpose: "required fixture"},
+		{ID: "acme-optional", Mode: "optional", Purpose: "optional fixture"},
+	}
+	if err := manifest.SaveDocument(ref.LocalPath, doc); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"my", "onboarding", "--complete", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}
+	a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, lookPath: func(string) (string, error) { return "", exec.ErrNotFound }}
+	if err := a.run(args); err == nil || !strings.Contains(err.Error(), `required tool "acme-required" is missing`) {
+		t.Fatalf("missing required tool error = %v", err)
+	}
+	a.lookPath = func(name string) (string, error) {
+		if name == "acme-required" {
+			return "/test/bin/acme-required", nil
+		}
+		return "", exec.ErrNotFound
+	}
+	if err := a.run(args); err != nil {
+		t.Fatalf("optional missing tool blocked completion: %v", err)
+	}
+}
+
 func TestOnboardingInteractiveDefaultExecsHarness(t *testing.T) {
 	home, umbrellaRoot := setupCLILaunchFixture(t)
 
@@ -304,6 +437,23 @@ func TestOnboardAgentPromptsForHarnessWhenOmitted(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Select a harness:") ||
 		!strings.Contains(stdout.String(), "Harness (--harness to skip this prompt):") {
 		t.Fatalf("stdout missing harness prompt:\n%s", stdout.String())
+	}
+}
+
+func TestOnboardAgentRequiresInstalledHarness(t *testing.T) {
+	home := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(string) (string, error) {
+			return "", exec.ErrNotFound
+		},
+	}
+	err := a.run([]string{"my", "onboarding", "--agent", "--home", home})
+	if err == nil || !strings.Contains(err.Error(), "install Codex, Claude Code") ||
+		!strings.Contains(err.Error(), "rerun my onboarding") {
+		t.Fatalf("error = %v", err)
 	}
 }
 

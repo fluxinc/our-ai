@@ -179,6 +179,11 @@ func (a app) runSetup(args []string) error {
 			opts.manifestName = name
 		}
 	}
+	if !opts.print {
+		if err := a.ensureManifestSynced(opts.home, opts.manifestName); err != nil {
+			return err
+		}
+	}
 	docs, ok, err := a.skillManifestDocs(opts.home, opts.manifestName)
 	if err == nil && opts.interactive && opts.manifestName == "" {
 		docs, ok, err = a.allSkillManifestDocs(opts.home)
@@ -387,6 +392,8 @@ type onboardOptions struct {
 	harnessName   string
 	noRefresh     bool
 	noUpdateCheck bool
+	status        bool
+	complete      bool
 }
 
 func (a app) runOnboard(args []string) error {
@@ -400,6 +407,8 @@ func (a app) runOnboard(args []string) error {
 	fs.StringVar(&opts.harnessName, "harness", "", "harness to launch ("+harness.Names()+")")
 	fs.BoolVar(&opts.noRefresh, "no-refresh", false, "skip best-effort auto-refresh during setup")
 	fs.BoolVar(&opts.noUpdateCheck, "no-update-check", false, "skip best-effort update notice during setup")
+	fs.BoolVar(&opts.status, "status", false, "report whether the local onboarding tour is complete")
+	fs.BoolVar(&opts.complete, "complete", false, "record the local onboarding tour as complete")
 	fs.Usage = func() {
 		a.printOnboardUsage()
 		fs.PrintDefaults()
@@ -419,6 +428,15 @@ func (a app) runOnboard(args []string) error {
 	if opts.noAgent && (opts.agent || opts.harnessName != "") {
 		return fmt.Errorf("--no-agent cannot be combined with --agent or --harness")
 	}
+	if opts.status && opts.complete {
+		return fmt.Errorf("--status cannot be combined with --complete")
+	}
+	if (opts.status || opts.complete) && (opts.agent || opts.noAgent || opts.harnessName != "") {
+		return fmt.Errorf("--status and --complete cannot be combined with agent selection flags")
+	}
+	if opts.status || opts.complete {
+		return a.runOnboardCompletion(opts)
+	}
 	// Interactive onboarding launches the model-guided harness by default so the
 	// model can introduce itself and configure the workspace conversationally.
 	// --agent or --harness force it; --no-agent and non-interactive (scripts,
@@ -432,6 +450,9 @@ func (a app) runOnboard(args []string) error {
 		} else if ok {
 			opts.manifestName = name
 		}
+	}
+	if err := a.ensureManifestSynced(opts.home, opts.manifestName); err != nil {
+		return err
 	}
 	docs, ok, err := a.skillManifestDocs(opts.home, opts.manifestName)
 	if err != nil {
@@ -525,6 +546,57 @@ func (a app) runOnboard(args []string) error {
 	return nil
 }
 
+func (a app) runOnboardCompletion(opts onboardOptions) error {
+	if opts.manifestName == "" {
+		name, ok, err := defaultManifestNameIfAny(opts.home, "", opts.umbrellaRoot)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("onboarding is incomplete: no organization manifest is registered")
+		}
+		opts.manifestName = name
+	}
+	doc, err := loadSingleRegisteredDoc(opts.home, opts.manifestName)
+	if err != nil {
+		return fmt.Errorf("onboarding is incomplete: %w", err)
+	}
+	root, err := umbrella.ResolveRoot(opts.home, ".", opts.umbrellaRoot, doc.doc)
+	if err != nil {
+		return fmt.Errorf("onboarding is incomplete: %w", err)
+	}
+	state, exists, err := loadOptionalState(root)
+	if err != nil {
+		return err
+	}
+	if opts.status {
+		if !exists || !tourMarked(state) {
+			return fmt.Errorf("onboarding is incomplete for %s; run my onboarding --manifest %s", opts.manifestName, opts.manifestName)
+		}
+		fmt.Fprintf(a.stdout, "complete\t%s\t%s\n", opts.manifestName, root)
+		return nil
+	}
+	if !exists || (len(doc.doc.Roles) != 0 && state.SelectedRole == "") {
+		return fmt.Errorf("cannot complete onboarding before setup; run my setup --interactive --manifest %s", opts.manifestName)
+	}
+	if err := a.requireGovernedPolicyAcceptances(opts.home, doc, root); err != nil {
+		return fmt.Errorf("cannot complete onboarding: %w", err)
+	}
+	for _, tool := range doc.doc.Tools {
+		if tool.Mode != "required" {
+			continue
+		}
+		if _, err := a.lookupPath(tool.ID); err != nil {
+			return fmt.Errorf("cannot complete onboarding: required tool %q is missing; inspect my tools info %s --manifest %s", tool.ID, tool.ID, opts.manifestName)
+		}
+	}
+	if err := markTourComplete(root); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.stdout, "Onboarding complete for %s.\n", opts.manifestName)
+	return nil
+}
+
 func (a app) runOnboardAgent(opts onboardOptions) error {
 	if opts.manifestName == "" {
 		if name, ok, err := defaultManifestNameIfAny(opts.home, "", opts.umbrellaRoot); err != nil {
@@ -535,7 +607,24 @@ func (a app) runOnboardAgent(opts onboardOptions) error {
 	}
 	docs, ok, err := a.skillManifestDocs(opts.home, opts.manifestName)
 	if err != nil {
-		return err
+		if opts.manifestName == "" {
+			return err
+		}
+		ref, found, findErr := manifest.Find(opts.home, opts.manifestName)
+		if findErr != nil {
+			return findErr
+		}
+		if !found {
+			return err
+		}
+		h, selectErr := a.selectOnboardHarness(opts.harnessName, opts.home)
+		if selectErr != nil {
+			return selectErr
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			return a.runOnboardAgentDirect(opts, h, onboardAgentBootstrapPrompt(ref))
+		}
+		return a.runOnboardAgentDirect(opts, h, onboardAgentRepairPrompt(ref, err))
 	}
 	if ok && len(docs) != 0 && len(docs) != 1 {
 		return fmt.Errorf("my onboarding requires exactly one manifest; pass --manifest")
@@ -558,6 +647,10 @@ func (a app) runOnboardAgent(opts onboardOptions) error {
 }
 
 func (a app) runOnboardAgentAuthor(opts onboardOptions, h harness.Harness) error {
+	return a.runOnboardAgentDirect(opts, h, onboardAgentPrompt("AUTHOR", "", ""))
+}
+
+func (a app) runOnboardAgentDirect(opts onboardOptions, h harness.Harness, prompt string) error {
 	if err := a.ensureLaunchSelfSkill(h, opts.home); err != nil {
 		return err
 	}
@@ -565,7 +658,7 @@ func (a app) runOnboardAgentAuthor(opts onboardOptions, h harness.Harness) error
 	if err != nil {
 		return err
 	}
-	args, err := initialPromptArgs(h, onboardAgentPrompt("AUTHOR", "", ""))
+	args, err := initialPromptArgs(h, prompt)
 	if err != nil {
 		return err
 	}
@@ -590,9 +683,17 @@ func (a app) selectOnboardHarness(name, home string) (harness.Harness, error) {
 		a.printOnboardHarnessChoice(h, reason)
 		return h, nil
 	}
-	all := harness.All()
+	var installed []harness.Harness
+	for _, h := range harness.All() {
+		if a.harnessInstalled(h) {
+			installed = append(installed, h)
+		}
+	}
+	if len(installed) == 0 {
+		return "", fmt.Errorf("no supported agent harness found on PATH; install Codex, Claude Code, OpenCode, Antigravity, Grok, or Cursor, then rerun my onboarding")
+	}
 	fmt.Fprintln(a.stdout, "Select a harness:")
-	for i, h := range all {
+	for i, h := range installed {
 		label := string(h)
 		switch {
 		case a.harnessInstalled(h) && a.harnessHasLogin(h, home):
@@ -615,12 +716,12 @@ func (a app) selectOnboardHarness(name, home string) (harness.Harness, error) {
 			continue
 		}
 		if n, err := strconv.Atoi(line); err == nil {
-			if n >= 1 && n <= len(all) {
-				h := all[n-1]
+			if n >= 1 && n <= len(installed) {
+				h := installed[n-1]
 				a.printOnboardHarnessChoice(h, "")
 				return h, nil
 			}
-			fmt.Fprintf(a.stdout, "Enter a number from 1 to %d, or a harness name.\n", len(all))
+			fmt.Fprintf(a.stdout, "Enter a number from 1 to %d, or an installed harness name.\n", len(installed))
 			continue
 		}
 		h, err := harness.Parse(line)
@@ -718,11 +819,35 @@ func onboardAgentPrompt(branch, manifestName, root string) string {
 			b.WriteString(".")
 		}
 		b.WriteString(" Set up this person against the existing organization through the split-pane walkthrough; offer AUTHOR-style admin edits only if the operator asks.\n")
+	case "JOIN_BOOTSTRAP":
+		b.WriteString("Branch: JOIN_BOOTSTRAP. An existing organization manifest is registered")
+		if manifestName != "" {
+			b.WriteString(": ")
+			b.WriteString(manifestName)
+		}
+		b.WriteString(", but its checkout is not synced yet. Begin with first-machine prerequisites and GitHub authentication, then sync the manifest, run setup, inspect required organization tools, and continue the JOIN walkthrough. Do not redirect this person into creating a new organization.\n")
+	case "JOIN_REPAIR":
+		b.WriteString("Branch: JOIN_REPAIR. An existing organization manifest is registered")
+		if manifestName != "" {
+			b.WriteString(": ")
+			b.WriteString(manifestName)
+		}
+		b.WriteString(", but its local checkout is invalid or unreadable. Diagnose and preserve recoverable state, repair one issue at a time, then continue JOIN. Do not create a replacement organization.\n")
 	default:
 		b.WriteString("Branch: detect from the registered manifest state.\n")
 	}
 	b.WriteString("Hard rules: use validated `my` commands rather than hand-editing manifests or generated files; never collect or store literal secrets; if the operator says to file an issue, treat that as authorization to file a public-safe project issue and do not substitute a personal scratch or memory note unless the target repo or privacy boundary is ambiguous; run validation/doctor/compile gates before publish; run `my publish --print` and get explicit human approval before any real `my publish`.")
 	return b.String()
+}
+
+func onboardAgentBootstrapPrompt(ref manifest.Ref) string {
+	prompt := onboardAgentPrompt("JOIN_BOOTSTRAP", ref.Name, "")
+	return prompt + "\nRegistered manifest URL: " + ref.GitURL + ". The first deterministic continuation command is `my manifests sync " + ref.Name + "`. If it fails, explain the exact prerequisite or authentication issue, resolve one item at a time, and rerun the same command. For GitHub HTTPS, use `gh auth status` and `gh auth login`; My AI supplies gh as an invocation-local Git credential helper and must not rewrite global Git configuration."
+}
+
+func onboardAgentRepairPrompt(ref manifest.Ref, cause error) string {
+	prompt := onboardAgentPrompt("JOIN_REPAIR", ref.Name, "")
+	return prompt + "\nThe registered manifest checkout could not be loaded: " + cause.Error() + ". Inspect `" + ref.LocalPath + "` without deleting or overwriting unrelated files. Explain the exact issue, preserve recoverable state, and use `my manifests sync " + ref.Name + "` when that is safe. Do not redirect this person into creating a new organization."
 }
 
 func (a app) printOnboardUnmarkedSetup(opts onboardOptions, manifestName, root string, configured bool, reason string) {
@@ -742,6 +867,8 @@ func (a app) printOnboardUnmarkedSetup(opts onboardOptions, manifestName, root s
 func (a app) printOnboardUsage() {
 	fmt.Fprintln(a.stderr, `Usage of my onboarding:
   my onboarding [--agent|--no-agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  my onboarding --status [--manifest NAME] [--home DIR] [--umbrella DIR]
+  my onboarding --complete [--manifest NAME] [--home DIR] [--umbrella DIR]
 
 Run interactively, my onboarding launches a harness with the bundled my-cli self-skill
 and an agent-operated onboarding prompt: the model greets the operator, starts a

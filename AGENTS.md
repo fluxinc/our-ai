@@ -17,6 +17,8 @@ The documentation site is a VitePress project in `site/`, with static assets in
 - `go test ./...`: run the full Go test suite.
 - `go vet ./...`: run Go static checks.
 - `git diff --check`: catch whitespace errors before commit.
+- `tests/onboarding/run.sh`: run the first-run onboarding stories in fresh
+  Docker containers (offline fixtures; see `tests/onboarding/README.md`).
 - `cd site && npm ci`: install the docs-site dependencies from the lockfile.
 - `cd site && npm run dev`: serve the docs site locally.
 - `cd site && npm run build`: produce the static docs build.

@@ -197,7 +197,7 @@ func TestToolsInfoAndDoctorCommands(t *testing.T) {
   ],
   "tools": [
     {
-      "id": "qmd",
+      "id": "acme-qmd-test-missing",
       "mode": "optional",
       "purpose": "search ranking helper",
       "install": {
@@ -224,12 +224,12 @@ func TestToolsInfoAndDoctorCommands(t *testing.T) {
 	if err := a.run([]string{"my", "tools", "list", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), "acme\tqmd\toptional\tsearch ranking helper") {
+	if !strings.Contains(stdout.String(), "acme\tacme-qmd-test-missing\toptional\tmissing\tsearch ranking helper") {
 		t.Fatalf("tools list stdout = %q", stdout.String())
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"my", "tools", "info", "qmd", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "tools", "info", "acme-qmd-test-missing", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "npm install -g @tobilu/qmd") {
@@ -241,7 +241,7 @@ func TestToolsInfoAndDoctorCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := stdout.String()
-	for _, want := range []string{"manifest\tacme\tok", "workspace\tacme:handbook", "tool\tacme:qmd"} {
+	for _, want := range []string{"manifest\tacme\tok", "workspace\tacme:handbook", "tool\tacme:acme-qmd-test-missing", "mode=optional"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("doctor stdout = %q, missing %q", out, want)
 		}

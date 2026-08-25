@@ -530,12 +530,14 @@ my manifests list --json
 ```
 
 With **no manifest registered**, take the **AUTHOR** branch (create a new org).
-With a **manifest already registered**, take the **JOIN** branch (set this
-person up against the existing org). When a manifest exists, have the operator
-run `my root` to find the umbrella; if it succeeds, the next command set starts
-with `cd "$(my root)"`. If `my root` fails, JOIN still applies but setup is
-needed. A returning admin may also want AUTHOR-style edits on an existing
-manifest — offer that when it fits.
+With a **registered but unsynced manifest**, take **JOIN_BOOTSTRAP**: keep the
+operator in the existing organization, resolve prerequisites/authentication,
+and rerun the named `my manifests sync` command. With a **synced manifest**,
+take the **JOIN** branch. When a synced manifest exists, have the operator run
+`my root` to find the umbrella; if it succeeds, the next command set starts with
+`cd "$(my root)"`. If `my root` fails, JOIN still applies but setup is needed.
+A returning admin may also want AUTHOR-style edits on an existing manifest —
+offer that when it fits.
 
 **Conversation discipline.** Ask one question at a time; prefer concrete choices
 over open prompts; match depth to the person (a solo founder and a 200-person
@@ -587,6 +589,16 @@ normal harness conversation after the operator is oriented.
 
 ### JOIN branch (manifest already registered)
 
+For JOIN_BOOTSTRAP, resolve one prerequisite at a time before the numbered JOIN
+steps. Start by checking Git and GitHub authentication. If `gh` is missing, show
+the platform-appropriate installation from the public GitHub CLI guidance and
+ask before the operator runs it. Then use `gh auth status`; if needed, have the
+operator run `gh auth login`. Finally rerun the exact
+`my manifests sync <name>` continuation from the launch prompt. For a GitHub
+HTTPS URL, My AI supplies `gh auth git-credential` only to its Git child process;
+do not run `gh auth setup-git` or rewrite global Git configuration. SSH URLs use
+the operator's SSH keys. Once sync succeeds, continue with JOIN below.
+
 1. Have the operator inspect the basic workspace state, then summarize it back:
 
    ```sh
@@ -606,6 +618,17 @@ normal harness conversation after the operator is oriented.
    ```sh
    my setup
    ```
+
+   After setup, inspect manifest-declared tools:
+
+   ```sh
+   my tools list
+   ```
+
+   Walk one missing **required** tool at a time with `my tools info <name>`,
+   explain the command and its source, and ask before the operator runs it.
+   Treat optional tools as choices: explain them when useful, but never install
+   them silently and never block onboarding on them.
 
 3. Teach the basic daily loop in small sets:
 
@@ -635,6 +658,22 @@ normal harness conversation after the operator is oriented.
    fleet/support context, they paste it into the harness conversation; the agent
    decides whether and how to create records. Do not teach the full content,
    support, fleet, catalog, or admin CLI in onboarding.
+
+### Finish the walkthrough
+
+After the operator confirms the walkthrough worked, all required tools are
+present, and any required policy gates have been handled, give this final local
+command set:
+
+```sh
+my onboarding --complete
+my onboarding --status
+```
+
+`--complete` records only local tour state. It does not publish, accept policy,
+or install anything; it refuses completion while a required tool is missing.
+Optional tools never block it. Do not mark completion on the operator's behalf
+before the operator confirms the walkthrough.
 
 ### Hard rules (do not skip)
 

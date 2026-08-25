@@ -137,6 +137,30 @@ func TestManifestDefaultRejectsUnregistered(t *testing.T) {
 	}
 }
 
+func TestManifestAddNoReplaceFailsClosedOnURLConflict(t *testing.T) {
+	home := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	first := "https://github.com/acme/first-manifest.git"
+	second := "https://github.com/acme/second-manifest.git"
+	if err := a.run([]string{"my", "manifests", "add", "acme", first, "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.run([]string{"my", "manifests", "add", "acme", second, "--no-replace", "--home", home}); err == nil || !strings.Contains(err.Error(), "refusing to replace") {
+		t.Fatalf("conflict error = %v", err)
+	}
+	stdout.Reset()
+	if err := a.run([]string{"my", "manifests", "list", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), first) || strings.Contains(stdout.String(), second) {
+		t.Fatalf("registration changed after conflict:\n%s", stdout.String())
+	}
+	if err := a.run([]string{"my", "manifests", "add", "acme", first, "--no-replace", "--home", home}); err != nil {
+		t.Fatalf("same URL should be idempotent: %v", err)
+	}
+}
+
 func TestManifestSyncReconcilesDerivedAfterPull(t *testing.T) {
 	home, umbrellaRoot, _, _, writer := setupCLITrackedManifestBody(t, `{
   "manifest_version": 1,
