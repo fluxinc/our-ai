@@ -706,10 +706,12 @@ func TestRunAutoNeverMarksUnrosteredTargetPushedByGnitWithPublishableRoot(t *tes
 	}
 }
 
-func TestRunAutoHoldsRosteredTargetWhenRootHasNoOrigin(t *testing.T) {
+func TestRunAutoHoldsRosteredTargetWhenRootLacksDeclaredOrigin(t *testing.T) {
 	remote, content, _ := setupTwoCheckoutRemote(t)
 	root := filepath.Dir(content)
-	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers:\n- id: handbook\n  path: content\n  remote: "+remote+"\n")
+	// The roster declares a root remote, so a root without origin is a
+	// misconfiguration rather than a deliberately local control root (#34).
+	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nremote: https://github.com/acme/control.git\nmembers:\n- id: handbook\n  path: content\n  remote: "+remote+"\n")
 	runGit(t, root, "init", "-q")
 	writeFile(t, filepath.Join(content, "meetings", "new.md"), "new\n")
 	adoptFile(t, content, "meetings/new.md")
@@ -1003,4 +1005,41 @@ func runGit(t *testing.T, dir string, args ...string) string {
 func adoptFile(t *testing.T, dir, path string) {
 	t.Helper()
 	runGit(t, dir, "add", "-N", path)
+}
+
+// setupLocalGnitControlRoot initializes a control root with commits but no
+// origin remote (#34).
+func setupLocalGnitControlRoot(t *testing.T, root string) {
+	t.Helper()
+	runGit(t, root, "init", "-q")
+	configGitUser(t, root)
+	runGit(t, root, "add", ".gnit/roster.yaml")
+	runGit(t, root, "commit", "-q", "-m", "Initialize local Gnit control workspace")
+}
+
+func TestRunGnitRemotelessControlRootPublishesMembersThroughBuiltin(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	gnitRoot := filepath.Dir(content)
+	writeFile(t, filepath.Join(gnitRoot, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers:\n- id: handbook\n  path: content\n  remote: "+remote+"\n")
+	setupLocalGnitControlRoot(t, gnitRoot)
+	writeFile(t, filepath.Join(content, "meetings", "2026-08-25-sync.md"), "sync\n")
+	adoptFile(t, content, "meetings/2026-08-25-sync.md")
+
+	entries := []Entry{{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}}}
+	report := Run(entries, Options{Backend: "auto", GnitRoot: gnitRoot, Publish: "auto", Message: "Add meeting note", Visibility: privateVisibility})
+	result := findResult(t, report, "handbook")
+	if result.Status != "pushed" || result.Backend != "builtin" {
+		t.Fatalf("result = %#v, want builtin push", result)
+	}
+	if !strings.Contains(report.BackendMessage, "control root has no origin remote") {
+		t.Fatalf("backend message = %q", report.BackendMessage)
+	}
+
+	writeFile(t, filepath.Join(content, "meetings", "2026-08-26-sync.md"), "sync\n")
+	adoptFile(t, content, "meetings/2026-08-26-sync.md")
+	forcedReport := Run(entries, Options{Backend: "gnit", GnitRoot: gnitRoot, Publish: "auto", Message: "x", Visibility: privateVisibility})
+	forcedResult := findResult(t, forcedReport, "handbook")
+	if forcedResult.Status != "held back" || forcedResult.ReasonCode != "gnit_root_unpublishable" {
+		t.Fatalf("forced result = %#v, want gnit_root_unpublishable hold", forcedResult)
+	}
 }

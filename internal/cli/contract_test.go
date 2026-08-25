@@ -348,3 +348,46 @@ func jsonString(s string) string {
 	data, _ := json.Marshal(s)
 	return string(data)
 }
+
+func TestContractListAutoRefreshesStaleManifestCache(t *testing.T) {
+	home, umbrellaRoot, _, _, writer := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "contract": ["Record decisions in the handbook before acting on them."]
+}`)
+	commitAndPushCLIGit(t, writer, "add contract rule")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "contract", "list", "--json", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	var entries []contractEntry
+	if err := json.Unmarshal(stdout.Bytes(), &entries); err != nil {
+		t.Fatalf("stdout %q: %v", stdout.String(), err)
+	}
+	if len(entries) != 1 || !strings.Contains(entries[0].Rule, "Record decisions") {
+		t.Fatalf("entries = %#v, want the merged rule (stderr %q)", entries, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "refresh\tmanifest:acme\tfixed") {
+		t.Fatalf("stderr = %q, want refresh note", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"my", "contract", "list", "--json", "--home", home, "--no-refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("--no-refresh stderr = %q, want silence", stderr.String())
+	}
+}

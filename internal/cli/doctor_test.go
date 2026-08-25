@@ -60,9 +60,10 @@ func TestDoctorExplainsPartialGnitTopologyWithoutMakingItAnOperatorFailure(t *te
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
+	// A remoteless control root is a valid local operating directory (#34).
 	var rootWarning, contentInfo bool
 	for _, item := range report.Coordination {
-		if item.Name == "root" && item.Status == "warning" && strings.Contains(item.Message, "no origin") {
+		if item.Name == "root" && item.Status == "info" && strings.Contains(item.Message, "no origin remote and stays local") {
 			rootWarning = true
 		}
 		if item.Name == "handbook" && item.Status == "info" && item.Path == content && strings.Contains(item.Message, "guarded built-in") {

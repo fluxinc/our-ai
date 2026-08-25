@@ -52,7 +52,10 @@ func CheckGnitWorkspace(root string, entries []Entry, runner Runner) []GnitWorks
 	}
 	var checks []GnitWorkspaceCheck
 	rootCheck := GnitWorkspaceCheck{Name: "root", Status: "ok", Path: root, Message: "coordinated workspace topology is readable"}
-	if issue := gnitRootPublishability(root, roster, runner); issue.Code != "" {
+	if isLocalGnitControlRoot(root, roster, runner) {
+		rootCheck.Status = "info"
+		rootCheck.Message = localGnitControlRootMessage
+	} else if issue := gnitRootPublishability(root, roster, runner); issue.Code != "" {
 		rootCheck.Status = "warning"
 		rootCheck.Message = issue.Message
 	}
@@ -152,13 +155,30 @@ func exactGnitMember(root string, roster gnitRoster, path string) *gnitRosterMem
 	return nil
 }
 
+// localGnitControlRootMessage explains a control-mode root that is deliberately
+// never pushed anywhere (#34).
+const localGnitControlRootMessage = "coordinated workspace control root has no origin remote and stays local; member checkouts publish through their own remotes"
+
+// isLocalGnitControlRoot reports whether the Gnit root is a control-mode
+// workspace with no origin remote and no roster remote. That is a valid,
+// intended per-user operating directory, not a misconfiguration: only its
+// member checkouts are published (#34). A roster that declares a remote the
+// root lacks is still a misconfiguration.
+func isLocalGnitControlRoot(root string, roster gnitRoster, runner Runner) bool {
+	if roster.Mode != "control" || roster.Remote != "" || !isGitRepoRoot(root, runner) {
+		return false
+	}
+	actual, _, err := gitTrim(runner, root, "remote", "get-url", "origin")
+	return err != nil || actual == ""
+}
+
 func gnitRootPublishability(root string, roster gnitRoster, runner Runner) gnitRoute {
 	if !isGitRepoRoot(root, runner) {
 		return gnitRoute{Code: "gnit_root_unpublishable", Message: "coordinated workspace root is not a Git repository; run my doctor"}
 	}
 	actual, _, err := gitTrim(runner, root, "remote", "get-url", "origin")
 	if err != nil || actual == "" {
-		return gnitRoute{Code: "gnit_root_unpublishable", Message: "coordinated workspace root has no origin remote; run my doctor"}
+		return gnitRoute{Code: "gnit_root_unpublishable", Message: "coordinated workspace root has no origin remote; add an origin remote or declare the root local in the roster"}
 	}
 	if roster.Remote != "" && normalizeGitRemote(roster.Remote) != normalizeGitRemote(actual) {
 		return gnitRoute{Code: "gnit_root_unpublishable", Message: "coordinated workspace root origin does not match its roster identity; run my doctor"}

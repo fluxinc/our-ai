@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- A `ci` GitHub Actions workflow runs `gofmt`, `go vet`, `go build`, and
+  `go test ./...` on every push to `master` and every pull request (#17).
+
+### Changed
+
+- Manifest-derived read verbs (`my contract list`, `my roles list|get`,
+  `my services list|get`, `my tools list|info`) now share the same TTL-bounded
+  auto-refresh as launches, so a merged manifest change is no longer served
+  silently from a stale cache. Each accepts `--no-refresh`; JSON output is
+  unchanged (#33).
+- A Gnit control-mode umbrella root with no origin remote (and no roster
+  remote) is treated as a deliberately local root: `my doctor` reports it as
+  `info` instead of a permanent warning, and `my sync --push` publishes member
+  content mounts through guarded built-in publication instead of holding them.
+  A roster that declares a root remote the checkout lacks still holds, and
+  `--backend gnit` still fails closed (#34).
+- Session docs and `my session resume` usage now state that a work session is
+  a persistent workspace, not a harness chat, and that resuming it starts a
+  fresh conversation (#24).
+
 ## 0.40.1 - 2026-08-25
 
 ### Fixed

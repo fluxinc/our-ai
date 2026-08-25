@@ -43,6 +43,12 @@ my ai -r codex
 my ai -r <session-id> codex
 ```
 
+A work session is a persistent workspace (worktrees plus `scratch/`), not a
+harness chat. `my session resume` and `my ai -r` put a harness back into that
+workspace but start a fresh conversation; resuming an earlier conversation is
+the harness's own feature (for example `claude --resume <chat-id>` or
+`codex resume`), and those ids are unrelated to My AI session ids.
+
 Use `join` when adding another harness to the same session. With one active
 session, `my session resume codex` or `my ai -r codex` selects it automatically.
 With multiple active sessions in an interactive terminal, the resume form

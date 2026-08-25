@@ -295,6 +295,11 @@ func runGnit(entries []Entry, opts Options) Report {
 	}
 
 	roster, rosterErr := readGnitRoster(opts.GnitRoot)
+	// A remoteless control root is local coordination metadata: its members
+	// still publish, through guarded built-in publication, unless the caller
+	// forced the gnit backend (#34).
+	localRoot := rosterErr == nil && !forced && isLocalGnitControlRoot(opts.GnitRoot, roster, runner)
+	var localRootMembers []string
 	routes := make([]gnitRoute, len(inspections))
 	var gnitIndexes []int
 	var builtinIndexes []int
@@ -315,6 +320,10 @@ func runGnit(entries []Entry, opts Options) Report {
 			routes[i] = classifyGnitEntry(opts.GnitRoot, roster, in.entry, runner)
 			if forced && routes[i].Backend == "builtin" {
 				routes[i] = gnitRoute{Code: "gnit_not_member", Message: "selected checkout is not an exact coordinated workspace member"}
+			}
+			if localRoot && routes[i].Backend == "gnit" {
+				routes[i] = gnitRoute{Backend: "builtin", Member: routes[i].Member}
+				localRootMembers = append(localRootMembers, in.entry.ID)
 			}
 			if routes[i].Code != "" {
 				preflightFailed = true
@@ -457,6 +466,9 @@ func runGnit(entries []Entry, opts Options) Report {
 		}
 		in.result.Backend = "builtin"
 		reconcile(in, inspections, opts, runner)
+	}
+	if len(localRootMembers) != 0 {
+		report.BackendMessage = "coordinated workspace control root has no origin remote; members published through guarded built-in publication: " + strings.Join(localRootMembers, ", ")
 	}
 	report.Results = collectResults(inspections)
 	return report

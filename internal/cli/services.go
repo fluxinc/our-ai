@@ -44,6 +44,8 @@ func (a app) runServicesList(args []string) error {
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	var noRefresh bool
+	fs.BoolVar(&noRefresh, "no-refresh", false, "skip best-effort auto-refresh")
 	rest, err := parseInterspersed(fs, args, map[string]bool{
 		"home":     true,
 		"manifest": true,
@@ -51,6 +53,7 @@ func (a app) runServicesList(args []string) error {
 	if err != nil {
 		return err
 	}
+	a.maybeAutoRefreshReads(home, manifestName, noRefresh)
 	if len(rest) != 0 {
 		return fmt.Errorf("usage: my services list")
 	}
@@ -77,6 +80,8 @@ func (a app) runServicesGet(args []string) error {
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	var noRefresh bool
+	fs.BoolVar(&noRefresh, "no-refresh", false, "skip best-effort auto-refresh")
 	rest, err := parseInterspersed(fs, args, map[string]bool{
 		"home":     true,
 		"manifest": true,
@@ -84,6 +89,7 @@ func (a app) runServicesGet(args []string) error {
 	if err != nil {
 		return err
 	}
+	a.maybeAutoRefreshReads(home, manifestName, noRefresh)
 	if len(rest) != 1 {
 		return fmt.Errorf("usage: my services get <id>")
 	}
@@ -231,6 +237,8 @@ func (a app) runRolesList(args []string) error {
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	var noRefresh bool
+	fs.BoolVar(&noRefresh, "no-refresh", false, "skip best-effort auto-refresh")
 	rest, err := parseInterspersed(fs, args, map[string]bool{
 		"home":     true,
 		"manifest": true,
@@ -238,6 +246,7 @@ func (a app) runRolesList(args []string) error {
 	if err != nil {
 		return err
 	}
+	a.maybeAutoRefreshReads(home, manifestName, noRefresh)
 	if len(rest) != 0 {
 		return fmt.Errorf("usage: my roles list")
 	}
@@ -264,6 +273,8 @@ func (a app) runRolesGet(args []string) error {
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	var noRefresh bool
+	fs.BoolVar(&noRefresh, "no-refresh", false, "skip best-effort auto-refresh")
 	rest, err := parseInterspersed(fs, args, map[string]bool{
 		"home":     true,
 		"manifest": true,
@@ -271,6 +282,7 @@ func (a app) runRolesGet(args []string) error {
 	if err != nil {
 		return err
 	}
+	a.maybeAutoRefreshReads(home, manifestName, noRefresh)
 	if len(rest) != 1 {
 		return fmt.Errorf("usage: my roles get <id>")
 	}

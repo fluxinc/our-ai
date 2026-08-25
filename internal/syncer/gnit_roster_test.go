@@ -136,3 +136,28 @@ func TestCheckGnitWorkspaceExplainsHealthyManagedMember(t *testing.T) {
 	}
 	t.Fatalf("checks = %#v", checks)
 }
+
+func TestCheckGnitWorkspaceReportsRemotelessControlRootAsInfo(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	root := filepath.Dir(content)
+	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers:\n- id: handbook\n  path: content\n  remote: "+remote+"\n")
+	setupLocalGnitControlRoot(t, root)
+	checks := CheckGnitWorkspace(root, []Entry{{ID: "handbook", GitURL: remote, LocalPath: content}}, nil)
+	if len(checks) == 0 || checks[0].Name != "root" {
+		t.Fatalf("checks = %#v", checks)
+	}
+	if checks[0].Status != "info" || !strings.Contains(checks[0].Message, "stays local") {
+		t.Fatalf("root check = %#v, want info local-root explanation", checks[0])
+	}
+}
+
+func TestCheckGnitWorkspaceStillWarnsWhenRosterDeclaresMissingRootRemote(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	root := filepath.Dir(content)
+	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nremote: "+remote+"\nmembers:\n- id: handbook\n  path: content\n")
+	setupLocalGnitControlRoot(t, root)
+	checks := CheckGnitWorkspace(root, nil, nil)
+	if len(checks) == 0 || checks[0].Status != "warning" {
+		t.Fatalf("checks = %#v, want root warning", checks)
+	}
+}

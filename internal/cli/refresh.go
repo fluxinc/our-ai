@@ -125,6 +125,21 @@ func (a app) maybeAutoRefresh(home, manifestName, umbrellaRoot, root string, noR
 	}
 }
 
+// maybeAutoRefreshReads gives manifest-derived read verbs (contract, roles,
+// services, tools) the same TTL-bounded auto-refresh as launches, so a merged
+// manifest change is not silently served from a stale cache (#33). Reads
+// outside any umbrella are left alone.
+func (a app) maybeAutoRefreshReads(home, manifestName string, noRefresh bool) {
+	if noRefresh {
+		return
+	}
+	root, ok, err := existingUmbrellaRoot(home, manifestName, "")
+	if err != nil || !ok {
+		return
+	}
+	a.maybeAutoRefresh(home, manifestName, root, root, false)
+}
+
 // requireGovernedManifestFreshness makes policy discovery fail closed. A
 // stale manifest cache could otherwise hide a newly required policy while all
 // local evidence still appeared valid. --no-refresh only controls the

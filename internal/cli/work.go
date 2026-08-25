@@ -717,6 +717,10 @@ change the parent shell by itself. To launch a harness in the session, use:
 
   my session resume [session-id] [harness]
 
+A work session is a persistent workspace, not a harness chat: resuming it
+starts a fresh conversation. Resume an earlier conversation with the harness's
+own resume command (for example claude --resume <chat-id>).
+
 Options:
 `, group, group)
 		fs.PrintDefaults()

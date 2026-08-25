@@ -72,6 +72,8 @@ func (a app) runContractList(args []string) error {
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	var noRefresh bool
+	fs.BoolVar(&noRefresh, "no-refresh", false, "skip best-effort auto-refresh")
 	rest, err := parseInterspersed(fs, args, map[string]bool{
 		"home":     true,
 		"manifest": true,
@@ -79,6 +81,7 @@ func (a app) runContractList(args []string) error {
 	if err != nil {
 		return err
 	}
+	a.maybeAutoRefreshReads(home, manifestName, noRefresh)
 	if len(rest) != 0 {
 		return fmt.Errorf("usage: my contract list")
 	}
