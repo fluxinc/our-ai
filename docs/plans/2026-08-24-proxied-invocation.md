@@ -92,8 +92,10 @@ invocation, starts the harness bound to it, and revokes it on exit.
    starts a pinned cllama with two distinct credentials held by `my`: a
    bundle-admin credential that can publish but cannot create, and a launcher
    issuer bound to the local person that can create/revoke its Invocations but
-   cannot publish. Both use separate OS-keychain entries; local state stores
-   only nonsecret locators. Explicitly documented 0600 files under
+   cannot publish. On first bootstrap, it starts with the admin credential,
+   publishes the bundle containing that person, and only then creates the
+   person-bound launcher issuer. Both use separate OS-keychain entries; local
+   state stores only nonsecret locators. Explicitly documented 0600 files under
    `~/.local/state/my-cli/proxy/<manifest>/` are separate fallbacks when no
    supported keychain is available. Remote v1 mode: `proxy.auth_ref`
    resolves a per-person issuer token from the OS keychain or 1Password for the
@@ -111,10 +113,14 @@ invocation, starts the harness bound to it, and revokes it on exit.
    compiler rejects unknown includes, cycles, unresolved parent conflicts, and
    missing or cyclic skill/tool dependencies; shared diamond ancestry is
    deduplicated deterministically by source digest. It emits only declared,
-   flattened effective roles. `controllers: [{id, member_namespace, roles}]`
+   flattened effective roles. `controllers: [{id, member_namespace, roles,
+   policy_exempt?}]`
    is the canonical authorization for organization-managed pods. A central
    admin may provision a controller issuer only for an ID in that map; each
-   create is checked against the current map, so the pod cannot self-scope. The
+   create is checked against the current map, so the pod cannot self-scope.
+   `policy_exempt: true` is valid only for an isolated
+   `policy-evaluator/` namespace whose sole allowed role is the internal
+   `policy-evaluator`; issuer administration cannot add the flag. The
    sidecar and remote deployments receive the same map and every role loadout
    in one atomic bundle.
    Every composite records its current parent-revision digests. Bundle
@@ -145,8 +151,9 @@ invocation, starts the harness bound to it, and revokes it on exit.
    unreachable is `proxy_unreachable` with remediation `my proxy ensure`.
    `my ai --flux-task <id>` is an explicit human action after the task appears
    in Flux My work; `my` is not a wake daemon. `my proxy revoke --role <role>
-   [--bundle-digest <digest>]` invokes cllama's admin bulk-revoke operation for
-   an urgent published change.
+   [--bundle-digest <digest>]` lists redacted live Invocations, resolves the
+   matching role-entry digests, and invokes cllama's digest-filtered admin
+   bulk-revoke operation for an urgent published change.
 6. **Skills and MCP are delivered by the proxy.** Skill entries travel in the
    published bundle; harnesses load bodies
    through cllama's managed `load_skill`. The
@@ -188,8 +195,11 @@ invocation, starts the harness bound to it, and revokes it on exit.
    waits, wakes, checkpoints, and approval requests. Flux Gate owns JIT access;
    accounting, mail, source-control, payment, and other services validate a
    release token for the effect-owner-defined proposal digest and perform their
-   own effects. my-cli does not put this state in record domains or implement a
-   workflow engine.
+   own effects. An effect owner or isolated executor reads the Flux approval
+   record using its own credential, verifies the approved opaque digest against
+   the canonical proposal, and only then signs the token; this is separate from
+   Flux Gate's JIT grant ceremony. my-cli does not put this state in record
+   domains or implement a workflow engine.
 
 ## Non-goals
 
@@ -232,7 +242,10 @@ invocation, starts the harness bound to it, and revokes it on exit.
    my-cli does not place it in the manifest.
 7. **Role authoring and orchestration adapters.** MGL-backed staged
    `role instruct`, Flux/Flux Gate service declarations, identity-aware tool
-   bindings, and S8. This adds clients and compiler inputs, not another daemon.
+   bindings, and S8. The internal `rules-author` and `policy-evaluator` roles
+   are ordinary published bundle roles, and a human author must appear in
+   `members` for `rules-author`. This adds clients and compiler inputs, not
+   another daemon.
 
 ## Spike tests (delivery gates; hermetic first, live as extra evidence)
 
@@ -248,7 +261,8 @@ invocation, starts the harness bound to it, and revokes it on exit.
   keychain proves a second `my` process resolves both stored sidecar credentials
   from nonsecret locators; a no-keychain case proves two separate fallbacks are
   mode 0600; the admin credential cannot create, the launcher cannot publish,
-  and neither reaches the harness. A missing `CLLAMA_BIN`
+  and neither reaches the harness; initial bootstrap proves bundle publication
+  precedes launcher-issuer creation. A missing `CLLAMA_BIN`
   fails the CI spike target rather than skipping it.
 - `TestSpikePinnedHarnessCompatibility` (credential-free delivery gate):
   uses cached, version- and checksum-pinned distributions of the real Claude
