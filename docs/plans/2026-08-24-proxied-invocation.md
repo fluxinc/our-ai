@@ -171,5 +171,5 @@ requests an invocation, starts the harness bound to it, and revokes it on exit.
 Blocked on a tagged cllama release shipping the v1 invocation types and
 client, the control API with read endpoints, `mayAssume`, and the conformance
 fixture. Slices 1–2 land before that tag; 3–6
-after. Both credential-free spikes are required CI checks. The README roadmap
+after. All three credential-free spikes are required CI checks. The README roadmap
 and `docs/plans/README.md` are updated with each slice.
