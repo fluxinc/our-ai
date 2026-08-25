@@ -114,13 +114,18 @@ invocation, starts the harness bound to it, and revokes it on exit.
    missing or cyclic skill/tool dependencies; shared diamond ancestry is
    deduplicated deterministically by source digest. It emits only declared,
    flattened effective roles. `controllers: [{id, member_namespace, roles,
-   policy_exempt?}]`
+   pod_members_feed?: {base_url, auth_ref}, policy_exempt?}]`
    is the canonical authorization for organization-managed pods. A central
    admin may provision a controller issuer only for an ID in that map; each
    create is checked against the current map, so the pod cannot self-scope.
    `policy_exempt: true` is valid only for an isolated
    `policy-evaluator/` namespace whose sole allowed role is the internal
    `policy-evaluator`; issuer administration cannot add the flag. The
+   optional feed entry is the only controller-specific runtime endpoint:
+   central mode requires an administrator-reviewed HTTPS origin and
+   organization-scoped `server://` credential alias. A controller selection
+   can enable that reserved feed but cannot name or override any feed, memory,
+   or tool endpoint. The
    sidecar and remote deployments receive the same map and every role loadout
    in one atomic bundle.
    Every composite records its current parent-revision digests. Bundle
@@ -151,9 +156,11 @@ invocation, starts the harness bound to it, and revokes it on exit.
    unreachable is `proxy_unreachable` with remediation `my proxy ensure`.
    `my ai --flux-task <id>` is an explicit human action after the task appears
    in Flux My work; `my` is not a wake daemon. `my proxy revoke --role <role>
-   [--bundle-digest <digest>]` lists redacted live Invocations, resolves the
-   matching role-entry digests, and invokes cllama's digest-filtered admin
-   bulk-revoke operation for an urgent published change.
+   --auth-ref <admin-ref> [--bundle-digest <digest>]` uses the admin credential
+   to list redacted live Invocations, resolves the matching role-entry digests,
+   and invokes cllama's digest-filtered admin bulk-revoke operation for an
+   urgent published change. The ordinary launcher credential never reaches an
+   admin route.
 6. **Skills and MCP are delivered by the proxy.** Skill entries travel in the
    published bundle; harnesses load bodies
    through cllama's managed `load_skill`. The
@@ -291,7 +298,11 @@ invocation, starts the harness bound to it, and revokes it on exit.
   refs, rejection of every capability field in a personal create selection,
   no issuer or provider/tool token in the harness, fail-closed behavior, and
   controller namespace/role/removal denial, issuer self-scoping denial, and
-  on-prem routing.
+  on-prem routing. Personal list/get is limited to its subject; controller
+  list/get is limited to its organization and member namespace; only admin can
+  inspect across them. A controller can enable only its bundle-declared
+  authenticated `pod-members` route, and an arbitrary URL is rejected before
+  fetch.
 - `TestSpikeRoleOnboarding` (credential-free, cross-repository): pins the
   canonical cllama conformance billing fixture and publishes its role with
   organization/role contract revisions, an ordered composite
