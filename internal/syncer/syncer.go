@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 // Runner executes external commands. Tests can replace it.
@@ -1320,12 +1322,19 @@ func normalizeRemote(value string) string {
 }
 
 func execCommand(name string, args ...string) ([]byte, error) {
-	return exec.Command(name, args...).CombinedOutput()
+	cmd := exec.Command(name, args...)
+	if name == "git" {
+		cmd.Env = manifest.GitEnv(os.Environ())
+	}
+	return cmd.CombinedOutput()
 }
 
 func execCommandInDir(dir, name string, args ...string) ([]byte, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
+	if name == "git" {
+		cmd.Env = manifest.GitEnv(os.Environ())
+	}
 	return cmd.CombinedOutput()
 }
 

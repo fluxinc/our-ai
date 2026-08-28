@@ -691,8 +691,8 @@ indexed in [docs/plans/](docs/plans/README.md):
   instead of expanding the CLI. Plan:
   [open-issue simplicity sweep](docs/plans/2026-08-25-open-issue-sweep.md).
 
-- **Shipped (v0.40.0; evidence corrected v0.40.1) — one-command,
-  agent-guided first-machine bootstrap.** A stable
+- **Shipped (v0.40.0; evidence corrected v0.40.1; sync auth corrected
+  v0.41.1) — one-command, agent-guided first-machine bootstrap.** A stable
   `https://my-cli.com/install.sh` entrypoint installs the release without Go,
   persists the user-local binary path, optionally registers an existing private
   manifest in the same command, and hands fresh interactive installs to an
@@ -701,10 +701,12 @@ indexed in [docs/plans/](docs/plans/README.md):
   required organization tools one issue at a time. GitHub HTTPS Git commands
   use the authenticated `gh` credential helper per invocation without global
   Git configuration changes, never prompt for passwords, and explain
-  authentication failures. `my setup` and `my onboarding --no-agent` clone a
-  registered-but-unsynced manifest themselves, and `my doctor` gains a
+  authentication failures. The v0.41.1 follow-up carries that same
+  invocation-local credential environment through routine built-in sync
+  fetches, pulls, and pushes. `my setup` and `my onboarding --no-agent` clone
+  a registered-but-unsynced manifest themselves, and `my doctor` gains a
   `prereq` section (git, `gh` login, PATH, harness). Proven end to end on clean
-  containers. Plan:
+  containers and against an authenticated macOS HTTPS mount. Plan:
   [first-run bootstrap](docs/plans/2026-08-21-first-run-bootstrap.md).
 
 - **Shipped (v0.39.0) — leftover worktree detection and complete first

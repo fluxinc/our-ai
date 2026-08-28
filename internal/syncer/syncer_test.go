@@ -9,6 +9,53 @@ import (
 	"testing"
 )
 
+func TestExecCommandPassesInvocationLocalGitCredentials(t *testing.T) {
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(root, "git-env.log")
+	gitStub := `#!/bin/sh
+{
+  printf 'prompt=%s\n' "$GIT_TERMINAL_PROMPT"
+  printf 'count=%s\n' "$GIT_CONFIG_COUNT"
+  printf 'key1=%s\n' "$GIT_CONFIG_KEY_1"
+  printf 'value1=%s\n' "$GIT_CONFIG_VALUE_1"
+  printf 'key2=%s\n' "$GIT_CONFIG_KEY_2"
+  printf 'value2=%s\n' "$GIT_CONFIG_VALUE_2"
+} >"$SYNCER_GIT_ENV_LOG"
+`
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(gitStub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("SYNCER_GIT_ENV_LOG", logPath)
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "core.askPass")
+	t.Setenv("GIT_CONFIG_VALUE_0", "true")
+
+	if out, err := execCommand("git", "fetch", "origin"); err != nil {
+		t.Fatalf("execCommand: %v\n%s", err, out)
+	}
+	got, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"prompt=0",
+		"count=3",
+		"key1=credential.https://github.com.helper",
+		"value1=",
+		"key2=credential.https://github.com.helper",
+		"value2=!gh auth git-credential",
+	} {
+		if !strings.Contains(string(got), want+"\n") {
+			t.Fatalf("git environment = %q, want line %q", got, want)
+		}
+	}
+}
+
 func TestRunAutoPushesPrivateContentAndPullsCleanSibling(t *testing.T) {
 	remote, content, manifest := setupTwoCheckoutRemote(t)
 	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")

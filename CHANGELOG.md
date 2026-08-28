@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.41.1 - 2026-08-27
+
+### Fixed
+
+- Built-in `my sync` Git fetch, pull, and push operations now use the same
+  invocation-local `gh auth git-credential` helper as manifest and setup
+  clones, with terminal prompts disabled. Private GitHub HTTPS mounts no longer
+  fall through to the obsolete username/password prompt after setup, and My AI
+  still does not rewrite global Git configuration.
+
 ## 0.41.0 - 2026-08-25
 
 ### Added
